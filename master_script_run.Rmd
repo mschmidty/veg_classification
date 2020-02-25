@@ -1,0 +1,35 @@
+---
+title: "Master Script Run"
+author: "Michael Schmidt"
+date: "1/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Load Functions
+```{r}
+source("R/make_training_testing_data.R")
+```
+
+
+# Make Training Dataset
+
+```{r}
+
+start_time<-Sys.time()
+
+training_data<-train_data_all(
+  training_poly_path = "shapefiles/training_polygons12N_02122020_BS_UPDATE.shp", 
+  tile_shape_path = "shapefiles/SanMiguel_West.shp", 
+  height_imagery_folder = "DATA/SanMiguel_West_heights_added"
+)
+
+start_time-Sys.time()
+
+saveRDS(training_data, "DATA/training_data/training_polygons12N_02122020_BS_UPDATE2.rds")
+
+```
+

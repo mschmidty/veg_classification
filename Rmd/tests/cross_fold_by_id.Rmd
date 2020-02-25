@@ -1,0 +1,33 @@
+---
+title: "Tests"
+author: "Michael Schmidt"
+date: "2/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Testing new splitting
+```{r}
+library(rsample)
+library(tidyverse)
+library(CAST)
+
+data<-readRDS("DATA/training_data/training_data_1222020.rds")%>%
+  drop_na()%>%
+  mutate(class = case_when(
+    class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
+    class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
+    class == 6 ~ "PJ", # PJ
+    class == 1 ~ "BG_rock", # BG_rock
+    class == 3 ~ "Grass" #Grass
+  ),
+  height = round(height, 1))
+
+
+
+
+```
+

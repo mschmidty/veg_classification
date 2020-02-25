@@ -1,0 +1,31 @@
+---
+title: "Add Heights"
+author: "Michael Schmidt"
+date: "1/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This fill runs uses files: 
+* height_calc_funcs.R
+* read_files_funcs.R
+* load_funcs.R
+
+to calculate heights from .las files and add them to their corresponding heights. These tiles are then output to a new file with the same name as the tile with "height_added" prepended on the filename. 
+
+## Load functions
+```{r}
+source("R/load_funcs.R")
+```
+
+Add height to all of the tiles. 
+```{r}
+list_of_tiles<-list.files('DATA/SanMiguel_West/Tiffs', pattern = ".tif", full.names = T)
+
+lapply(list_of_tiles, add_heights, "DATA/SanM_W_LAS", "DATA/SanMiguel_West_heights_added")
+```
+
+This worked!

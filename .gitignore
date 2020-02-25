@@ -1,0 +1,21 @@
+# Folders
+#########
+#The data in these folders is too big for github.
+DATA/
+mxd/
+model_runs/old_models/
+output/
+.Rproj.user/
+
+# File Types
+############
+*.tif
+*.tif.aux
+*.tif.ovr
+*.gdb
+*.gdb/
+*.lock
+*.tif.lyr
+
+# Specific Files
+model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE.rds
