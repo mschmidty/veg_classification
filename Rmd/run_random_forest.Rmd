@@ -258,10 +258,23 @@ saveRDS(caret_fit_base, "model_runs/ID_CV_model_BS_UPDATE_normalized/ID_CV_model
 
 
 ## Predict the above model
+
+Need to fix this.  My latest predict addding heights was deleted. 
 ```{r}
 library(raster)
 library(caret)
-s
+
+model<-readRDS("model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3.rds")
+raster_to_predict<-brick("DATA/SanMiguel_West_heights_added/height_add_SM_GypsumGapNE_0304_180611.tif")
+names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
+beginCluster(6)
+start_time<-Sys.time()
+prediction<-clusterR(raster_to_predict, predict, args = list(model))
+end_time<-Sys.time()
+end_time - start_time
+endCluster()
+##prediction<-raster::predict(raster, model)
+writeRaster(prediction, "model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3_SM_GypsumGapNE_0304_180611.tif")
 ```
 
 
