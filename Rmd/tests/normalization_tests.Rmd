@@ -1,0 +1,174 @@
+---
+title: "Normlize RGB Test"
+author: "Michael Schmidt"
+date: "3/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load Libraries
+```{r}
+library(tidyverse)
+library(raster)
+library(sf)
+library(caret)
+##library(RStoolbox)
+conflicted::conflict_prefer("select", "dplyr", "raster")
+```
+
+## Make a clipped Tile 
+```{r}
+clip_file<-read_sf("shapefiles/clip_shape_gypsum_gap_nw_0103.shp")
+
+tile<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
+
+
+
+cropped_tile<-tile%>%
+  crop(clip_file)
+
+rm(tile)
+
+cropped_tile_df<-cropped_tile%>%
+  as.data.frame()%>%
+  as_tibble()
+```
+
+
+
+## Normalize cropped tile with Caret
+!!!!!THIS DIDN'T WORK!!!!
+
+```{r}
+pre_params<-preProcess(cropped_tile_df, method = c("range"))
+
+transformed_tile<-raster::predict(pre_params, cropped_tile)
+```
+
+
+## Normalize Image with RSToolbox
+```{r}
+normalized<-normImage(cropped_tile, norm = FALSE)
+normalized2<-scale(cropped_tile)
+```
+
+## Normalizing using `raster::scale` with parallel
+```{r}
+library(raster)
+library(tidyverse)
+library(tabularaster)
+start<- Sys.time()
+tile<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
+beginCluster(4)
+normalize_tile<-clusterR(tile, scale)
+tile<-brick("Data/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif")
+normalize_tile2<-clusterR(tile, scale)
+endCluster()
+Sys.time()-start
+```
+
+
+```{r}
+cropped_n1<-normalize_tile%>%
+  crop(extent(normalize_tile2))
+
+cropped_n2<-normalize_tile2%>%
+  crop(extent(normalize_tile))
+```
+
+
+```{r}
+merged<-cropped_n1%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate(tile = "0103")%>%
+  bind_rows(
+    cropped_n2%>%
+      as.data.frame()%>%
+      as_tibble()%>%
+      mutate(tile = "0102")
+  )
+
+merged%>%
+  ggplot(aes(tile, layer.1 ))+
+  geom_boxplot()
+
+
+
+
+```
+
+
+Normalization didn't work using scale. 
+
+## Normalize with range. 
+
+```{r}
+tile2<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
+tile<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif")
+
+tiles<-tile%>%
+  crop(extent(tile2[[1]]), datatype = dataType(.))%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate_if(is.numeric, range01)%>%
+  set_names("band1", "band2", "band3", "band4")%>%
+  mutate(tile = "0102")%>%
+  bind_rows(
+    tile2%>%
+      crop(extent(tile), datatype = dataType(.))%>%
+      as.data.frame()%>%
+      as_tibble()%>%
+      mutate_if(is.numeric, range01)%>%
+      set_names("band1", "band2", "band3", "band4")%>%
+      mutate(tile = "0103")
+  )
+
+
+
+tiles%>%
+  ggplot(aes(tile, band1))+
+    geom_boxplot()
+```
+
+Normalizing by ranging from 0 to 1 works perfectly for overlapping tiles. 
+
+## Applying normalizing function to raster::brick
+
+```{r}
+test_r<-tile%>%
+  crop(extent(tile2[[1]]), datatype = dataType(.))
+
+test_r[[1]]<-test_r[[1]]
+
+range01_raster <- function(x, i){
+  (x-minValue(x)[[i]])/(maxValue(x)[[i]]-minValue(x)[[i]])
+}
+
+range01_raster(test_r[[1]], 1)%>%
+  as.data.frame()%>%
+  as_tibble()
+min(test_r[[1]])
+
+seq(1:nlayers(test_r))
+
+normalize <- function(raster){
+  range_func <- function(x, i){
+    (x-minValue(x)[[1]])/(maxValue(x)[[1]]-minValue(x)[[1]])
+  }
+  
+  for(i in seq(1:nlayers(raster))){
+    print(i)
+    raster[[i]]<-range_func(raster[[i]], i)
+  }
+  raster
+}
+
+range_test<-rangeify_r(test_r)
+
+```
+
+

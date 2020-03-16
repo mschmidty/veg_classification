@@ -26,9 +26,9 @@ model_tiles<-function(tile_shape_path, training_poly_path){
 
 # Subsetting training data
 
-train_data<-function(imagery_name, height_imagery_folder, training_poly_path){
+train_data<-function(imagery_name, imagery_folder, training_poly_path){
   
-  path_to_raster<-list.files(height_imagery_folder, pattern = imagery_name, full.names = T)
+  path_to_raster<-list.files(imagery_folder, pattern = imagery_name, full.names = T)
   height_raster<-brick(path_to_raster)
   
   train_polys<-st_read(training_poly_path)%>%
@@ -60,6 +60,44 @@ train_data<-function(imagery_name, height_imagery_folder, training_poly_path){
   
 }
 
+train_data2<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
+  
+  tile_path<-paste(imagery_folder, imagery_name, sep = "/")
+  
+  height_raster_path<-lfn_2(tile_path, height_raster_folder)
+  height_raster<-raster(height_raster_path)
+  
+  height_tile_merge<-height_merge2(tile_path, height_raster)
+  
+  train_polys<-st_read(training_poly_path)%>%
+    mutate(Id = as.numeric(rownames(.)))%>%
+    st_crop(extent(height_tile_merge[[1]]))%>%
+    mutate(Class = case_when(
+      Class == "BG_Rock" ~ 1,
+      Class == "Black_Sage" ~ 2, 
+      Class == "Grass" ~ 3, 
+      Class == "Other_Shrub" ~ 4,
+      Class == "Other_Veg" ~ 5, 
+      Class == "PJ" ~ 6, 
+      Class == "Sage" ~ 7
+    ))
+  
+  train_polys_class_raster<-rasterize(train_polys, height_tile_merge[[1]], field = "Class", silent = T) 
+  train_polys_id_raster<-rasterize(train_polys, height_tile_merge[[1]], field = "Id", silent = T)
+  
+  comb<-stack(height_tile_merge, train_polys_class_raster)%>%
+    stack(train_polys_id_raster)
+  
+  print(names(comb))
+  
+  names(comb)<-c("band1", "band2", "band3", "band4", "height", "Class", "Id")
+  
+  dissolve_shape<-st_union(train_polys)
+  
+  raster::extract(comb, as_Spatial(dissolve_shape))[[1]]
+}
+
+
 train_data_all<-function(training_poly_path, tile_shape_path, height_imagery_folder){
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
@@ -69,7 +107,18 @@ train_data_all<-function(training_poly_path, tile_shape_path, height_imagery_fol
     as_tibble()
 }
 
-
-
-
-
+train_data_all_add_heights<-function(training_poly_path, tile_shape_path, imagery_folder, height_raster_folder){
+  tile_list<-model_tiles(tile_shape_path, training_poly_path)
+  
+  list_length<-length(tile_list)
+  final_data_list<-vector(mode = "list", length = list_length)
+  
+  for(i in seq(1:list_length)){
+    final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
+  }
+  
+  ##final_data_list<-sapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path, simplify = T)
+  
+  do.call(rbind, final_data_list)%>%
+    as_tibble()
+}

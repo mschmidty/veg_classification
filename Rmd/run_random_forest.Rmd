@@ -195,25 +195,26 @@ USE
 ```{r}
 library(CAST)
 library(doParallel)
-data<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE3.rds")%>%
+library(caret)
+data<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE2_normalized.rds")%>%
   drop_na()%>%
-  mutate(class = case_when(
-    class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
-    class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
-    class == 6 ~ "PJ", # PJ
-    class == 1 ~ "BG_rock", # BG_rock
-    class == 3 ~ "Grass" #Grass
+  mutate(Class = case_when(
+    Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
+    Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
+    Class == 6 ~ "PJ", # PJ
+    Class == 1 ~ "BG_rock", # BG_rock
+    Class == 3 ~ "Grass" #Grass
   ),
   height = round(height, digits = 1))
 
-trainIndex<-createDataPartition(data$class, p = .8, list = FALSE, times = 1)
+trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
 
 data_train<-data[trainIndex, ]
 data_test<-data[-trainIndex, ]
 
-indeces<-CreateSpacetimeFolds(data_train, spacevar = "id", k = 10)
+indeces<-CreateSpacetimeFolds(data_train, spacevar = "Id", k = 10)
 
-indeces$index
+##indeces$index
 
 
 
@@ -231,8 +232,8 @@ cl<-makePSOCKcluster(no_cores)
 registerDoParallel(cl)
 
 start_time<-Sys.time()
-caret_fit_base<-train(as.factor(class) ~ . , 
-                  data=select(data_train, -id),
+caret_fit_base<-train(as.factor(Class) ~ . , 
+                  data=select(data_train, -Id),
                   method="rf",
                   trControl=control,
                   tuneGrid=tunegrid,
@@ -248,9 +249,9 @@ caret_fit_base
 
 prediction<-bind_cols(data_test, predict = predict(caret_fit_base, data_test))
 
-prop.table(caret::confusionMatrix(as.factor(prediction$class), prediction$predict)$table, 2)
+prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predict)$table, 2)
 
-saveRDS(caret_fit_base, "model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3.rds")
+saveRDS(caret_fit_base, "model_runs/ID_CV_model_BS_UPDATE_normalized/ID_CV_model_BS_UPDATE3_normalized.rds")
 
 
 ```
@@ -260,25 +261,7 @@ saveRDS(caret_fit_base, "model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3
 ```{r}
 library(raster)
 library(caret)
-model<-readRDS("model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3.rds")
-
-raster_to_predict<-brick("DATA/SanMiguel_West_heights_added/height_add_SM_GypsumGapNE_0304_180611.tif")
-
-names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
-beginCluster(6)
-
-start_time<-Sys.time()
-
-prediction<-clusterR(raster_to_predict, predict, args = list(model))
-
-end_time<-Sys.time()
-
-end_time - start_time
-endCluster()
-
-##prediction<-raster::predict(raster, model)
-
-writeRaster(prediction, "model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE3_SM_GypsumGapNE_0304_180611.tif")
+s
 ```
 
 

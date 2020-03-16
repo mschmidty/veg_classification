@@ -46,15 +46,50 @@ make_heights<-function(las_path){
 #' @param height_raster_object raster of heights with the same resolution as the `imagery_path` file. They do not have to have the same extent, but they do need to overlap. 
 #' @return a `raster::stacked` object with 5 layers `c('band1', 'band2', 'band3', 'band4')`.
 
+### I altered this function so it might break some things!!!!
 height_merge<-function(imagery_path, height_raster_object){
   raster<-brick(imagery_path)
   names(raster)<-c('band1', 'band2', 'band3', 'band4')
+  
+  if(crs(tile, asText = TRUE) != ifelse(
+    is.na(crs(height, asText = TRUE)), 
+    "No CRS", 
+    crs(height, asText = TRUE)
+  )){
+    crs(height_raster_object)<-crs(raster)
+  }
+  
   height_raster_object<-height_raster_object%>%
-    crop(raster$band1)
+    crop(raster[[1]])
   raster%>%
     crop(height_raster_object)%>%
-    stack(height_raster_object$height)
+    stack(height_raster_object)
 }
+
+height_merge2<-function(imagery_path, height_raster_object){
+  raster<-brick(imagery_path)%>%
+    rangify()
+  
+  if(crs(raster, asText = TRUE) != ifelse(
+    is.na(crs(height_raster_object, asText = TRUE)), 
+    "No CRS", 
+    crs(height_raster_object, asText = TRUE)
+  )){
+    crs(height_raster_object)<-crs(raster)
+  }
+  
+  height_raster_object<-height_raster_object%>%
+    disaggregate(fact=5)%>%
+    crop(raster[[1]], datatype = dataType(.))
+  
+  final_raster<-raster%>%
+    crop(height_raster_object, datatype = dataType(.))%>%
+    stack(height_raster_object)
+}
+
+
+
+
 
 #' This function combines the the `make_heights()` and `height_merge()` functions.
 #' 
@@ -62,7 +97,7 @@ height_merge<-function(imagery_path, height_raster_object){
 #' @param imagery_path raster of heights with the same resolution as the `r_path` file. They do not have to have the same extent, but they do need to overlap. 
 #' @return a `raster::stacked` object with 5 layers `c('band1', 'band2', 'band3', 'band4')`.
 
-add_heights<-function(imagery_path, las_folder, output_folder){
+calcadd_heights<-function(imagery_path, las_folder, output_folder){
   tryCatch({
     las_path<-lfn(imagery_path, las_folder)
     print(paste0("Finished lfn func: ", imagery_path))
@@ -84,4 +119,20 @@ add_heights<-function(imagery_path, las_folder, output_folder){
     write_csv(t, paste0(output_folder, "/failed_list.csv"), append = T)
     
   })
+}
+
+## Function to use for combining heights and 
+combine_height_and_tile<-function(imagery_path, height_raster_folder, ouput_folder){
+  
+    las_path<-lfn_2(imagery_path, height_raster_folder)
+    print(paste0("Finished lfn_2 func: ", imagery_path))
+    
+    heights<-st_read(las_path)
+    print(paste0("Finished read heights", imagery_path))
+    
+    final_raster<-height_merge(imagery_path, heights)
+    print(paste0("Finished height_merge func: ", imagery_path))
+    
+    writeRaster(final_raster, paste0(output_folder, "/height_add_", basename(imagery_path)))
+    
 }

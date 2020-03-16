@@ -16,6 +16,8 @@ output/
 *.gdb/
 *.lock
 *.tif.lyr
+*.tif.aux.xml
+
 
 # Specific Files
 model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE.rds

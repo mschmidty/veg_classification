@@ -33,3 +33,23 @@ saveRDS(training_data, "DATA/training_data/training_polygons12N_02122020_BS_UPDA
 
 ```
 
+## Make Training Datasets with New Method
+```{r}
+source("R/load_funcs.R")
+start_time<-Sys.time()
+
+train_data_all_add_height<-train_data_all_add_heights(
+  training_poly_path = "shapefiles/training_polygons12N_02122020_BS_UPDATE.shp", 
+  tile_shape_path = "shapefiles/SanMiguel_West.shp", 
+  imagery_folder = "DATA/SanMiguel_West/Tiffs",
+  height_raster_folder = "DATA/NOC_heights/San_Miguel_West_Raster"
+)
+
+start_time-Sys.time()
+
+mew_test_data<-train_data_all_add_height%>%
+  purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
+
+saveRDS(mew_test_data, "DATA/training_data/training_polygons12N_02122020_BS_UPDATE2_normalized.rds")
+```
+

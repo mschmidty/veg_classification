@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-This fill runs uses files: 
+This file runs uses files: 
 * height_calc_funcs.R
 * read_files_funcs.R
 * load_funcs.R
@@ -25,7 +25,7 @@ Add height to all of the tiles.
 ```{r}
 list_of_tiles<-list.files('DATA/SanMiguel_West/Tiffs', pattern = ".tif", full.names = T)
 
-lapply(list_of_tiles, add_heights, "DATA/SanM_W_LAS", "DATA/SanMiguel_West_heights_added")
+lapply(list_of_tiles, calcadd_heights, "DATA/SanM_W_LAS", "DATA/SanMiguel_West_heights_added")
 ```
 
 This worked!
