@@ -206,9 +206,9 @@ data_cl%>%
     theme_light()
 
 data_cl%>%
-  ggplot(aes(value, color = band_num))+
-  geom_bar()+
-  facet_wrap("Class")
+  filter(!is.na(Class))%>%
+  ggplot(aes(as.factor(Class), value))+
+  geom_boxplot(aes(color = as.factor(Class)))
 ```
 
 
