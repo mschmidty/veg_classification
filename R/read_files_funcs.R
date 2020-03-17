@@ -24,14 +24,14 @@ l_train_f<-function(training_poly_path, tile_poly_path){
     pull(NAME)
 }
 
-lfn_2<-function(imagery_path, las_folder){
+lfn_2<-function(imagery_path, height_raster_folder){
   
   name_parts<-imagery_path%>%
     basename()%>%
     sub(pattern = "(.*)\\..*$", replacement = "\\1", basename(.))%>%
     str_split(pattern="_")
   
-  list.files(las_folder,
+  list.files(height_raster_folder,
              pattern = paste(name_parts[[1]][1], name_parts[[1]][2], name_parts[[1]][3], sep = "_"),
              ignore.case = T,
              full.names = T)%>%

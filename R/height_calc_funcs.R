@@ -1,4 +1,4 @@
-library(lidR)
+##library(lidR)
 library(raster)
 library(tidyverse)
 
