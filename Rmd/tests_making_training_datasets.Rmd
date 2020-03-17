@@ -182,4 +182,33 @@ train_data<-function(imagery_name, height_imagery_folder, training_poly_path){
 ```
 
 
+## Looking at normalized training dataset to make sure everything is copesthetic. 
+```{r}
+library(tidyverse)
+
+data<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE2_normalized.rds")
+
+data2<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE3.rds")
+```
+
+```{r}
+data_cl<-data%>%
+  select(-Id, -height)%>%
+  pivot_longer(
+    -Class,
+    names_to = "band_num", 
+    values_to = "value"
+    )
+
+data_cl%>%
+  ggplot(aes(value, color = band_num))+
+   geom_density()+
+    theme_light()
+
+data_cl%>%
+  ggplot(aes(value, color = band_num))+
+  geom_bar()+
+  facet_wrap("Class")
+```
+
 
