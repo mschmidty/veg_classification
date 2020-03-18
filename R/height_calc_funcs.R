@@ -78,6 +78,10 @@ height_merge2<-function(imagery_path, height_raster_object){
     crs(height_raster_object)<-crs(raster)
   }
   
+  if(is.character(height_raster_object)){
+    height_raster_object<-raster(height_raster_object)
+  }
+  
   height_raster_object<-height_raster_object%>%
     disaggregate(fact=5)%>%
     crop(raster[[1]], datatype = dataType(.))
