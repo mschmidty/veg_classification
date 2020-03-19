@@ -59,7 +59,6 @@ normalized2<-scale(cropped_tile)
 ```{r}
 library(raster)
 library(tidyverse)
-library(tabularaster)
 start<- Sys.time()
 tile<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
 beginCluster(4)
@@ -249,11 +248,13 @@ comb%>%
 
 ## Testing center and scale
 ```{r}
+library(raster)
+library(tidyverse)
 start<- Sys.time()
-tile<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
-beginCluster(4)
+tile<-brick("DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif")
+beginCluster(10)
 normalize_tile<-clusterR(tile, scale)
-tile<-brick("Data/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
+tile<-brick("Data/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
 normalize_tile2<-clusterR(tile, scale)
 endCluster()
 Sys.time()-start
@@ -261,4 +262,62 @@ Sys.time()-start
 ```
 
 
+```{r}
+n_tc<-normalize_tile%>%
+  crop(extent(normalize_tile2))%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate(tile = "GypsumGapNW_0104")
+
+comb<-normalize_tile2%>%
+  crop(extent(normalize_tile))%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate(tile = "GypsumGapNW_0103")%>%
+  bind_rows(n_tc)
+
+
+
+reshape<-comb%>%
+  set_names(c("band1", "band2", "band3", "band4", "tile"))%>%
+  mutate(
+    band1_norm = (band1 - min(band1))/(max(band1) - min(band1)),
+    band2_norm = (band2 - min(band2))/(max(band2) - min(band2)),
+    band3_norm = (band3 - min(band3))/(max(band3) - min(band3)),
+    band4_norm = (band4 - min(band4))/(max(band4)-min(band4)),
+    ndvi_norm  = (band4_norm-band1_norm)/(band4_norm+band1_norm)
+  )%>%
+  select(-band1, -band2, -band3, -band4)%>%
+  pivot_longer(-tile, names_to = "band", values_to = "values")
+
+reshape%>%
+  group_by(tile)%>%
+  sample_frac(0.5)%>%
+  ungroup()%>%
+  ggplot(aes(band, values, fill = tile), color = "#000000")+
+  geom_boxplot( )+
+  theme_light()+
+  labs(
+    title = "Normalization Test Center and Scale",
+    subtitle = "100% of overlapping tiles",
+    x = " ", 
+    y  = "Normalized Value"
+  )
+  
+```
+
+
+
+## save for plotting. 
+```{r}
+n_tc_1<-normalize_tile%>%
+  crop(extent(normalize_tile2))
+
+comb_t<-normalize_tile2%>%
+  crop(extent(normalize_tile))
+
+writeRaster(n_tc_1, "output/center_scale_GypsumGapNW_0103.tif")
+writeRaster(comb_t, "output/center_scale_GypsumGapNW_0104.tif")
+  
+```
 
