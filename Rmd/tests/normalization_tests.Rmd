@@ -320,4 +320,49 @@ writeRaster(n_tc_1, "output/center_scale_GypsumGapNW_0103.tif")
 writeRaster(comb_t, "output/center_scale_GypsumGapNW_0104.tif")
   
 ```
+## This is hte best normaliztion techniques.
+```{r}
+library(raster)
+library(tidyverse)
+start<- Sys.time()
+tile<-brick("DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif")
+beginCluster(10)
+normalize_tile<-clusterR(tile, scale, args = list(center = FALSE))
+tile<-brick("Data/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
+normalize_tile2<-clusterR(tile, scale, args = list(center = FALSE))
+endCluster()
+Sys.time()-start
+
+n_tc<-normalize_tile%>%
+  crop(extent(normalize_tile2))%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate(tile = "GypsumGapNW_0104")
+
+comb<-normalize_tile2%>%
+  crop(extent(normalize_tile))%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  mutate(tile = "GypsumGapNW_0103")%>%
+  bind_rows(n_tc)
+
+reshape<-comb%>%
+  set_names(c("band1", "band2", "band3", "band4", "tile"))%>%
+  pivot_longer(-tile, names_to = "band", values_to = "values")
+
+reshape%>%
+  # group_by(tile)%>%
+  # sample_frac(0.5)%>%
+  # ungroup()%>%
+  ggplot(aes(band, values, fill = tile), color = "#000000")+
+  geom_boxplot( )+
+  theme_light()+
+  labs(
+    title = "Normalization Test Center = FALSE and Scale",
+    subtitle = "100% of overlapping tiles",
+    x = " ", 
+    y  = "Normalized Value"
+  )
+```
+
 
