@@ -60,14 +60,14 @@ train_data<-function(imagery_name, imagery_folder, training_poly_path){
   
 }
 
-train_data2<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
+train_data2<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path, scale){
   
   tile_path<-paste(imagery_folder, imagery_name, sep = "/")
   
   height_raster_path<-lfn_2(tile_path, height_raster_folder)
   height_raster<-raster(height_raster_path)
   
-  height_tile_merge<-height_merge2(tile_path, height_raster)
+  height_tile_merge<-height_merge2(tile_path, height_raster, parallel, scale)
   
   train_polys<-st_read(training_poly_path)%>%
     mutate(Id = as.numeric(rownames(.)))%>%
@@ -75,8 +75,8 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
     mutate(Class = case_when(
       Class == "BG_Rock" ~ 1,
       Class == "Black_Sage" ~ 2, 
-      Class == "Grass" ~ 3, 
-      Class == "Other_Shrub" ~ 4,
+      Class %in% c("Grass", "Blue_Grama") ~ 3, 
+      Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush") ~ 4,
       Class == "Other_Veg" ~ 5, 
       Class == "PJ" ~ 6, 
       Class == "Sage" ~ 7
@@ -107,15 +107,31 @@ train_data_all<-function(training_poly_path, tile_shape_path, height_imagery_fol
     as_tibble()
 }
 
-train_data_all_add_heights<-function(training_poly_path, tile_shape_path, imagery_folder, height_raster_folder){
+train_data_all_add_heights<-function(
+  training_poly_path, 
+  tile_shape_path, 
+  imagery_folder, 
+  height_raster_folder, 
+  parallel, 
+  scale
+  ){
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
   list_length<-length(tile_list)
   final_data_list<-vector(mode = "list", length = list_length)
   
-  for(i in seq(1:list_length)){
-    final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
+  if(is.numeric(parallel)){
+    n_cores<-parallel
+    foreach(i = 1:list_length)%do%{
+      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path, scale)
+    }
+    
+  }else{
+    for(i in seq(1:list_length)){
+      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path, scale)
+    }
   }
+  
   
   ##final_data_list<-sapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path, simplify = T)
   
