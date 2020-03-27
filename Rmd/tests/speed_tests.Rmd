@@ -29,7 +29,6 @@ calcNDVI<-(r[[4]]-r[[1]])/(r[[4]]+r[[1]])
 Sys.time()-start
 ```
 The calculation takes `Sys.time()-start`. 
-## 
 ```{r}
 rasterOptions(maxmemory = 1e+10)
 rasterOptions()
