@@ -18,7 +18,7 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
     raster_to_predict<-height_merge2(vector_of_file_paths[i], height_raster)
     names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
     
-    beginCluster(10)
+    beginCluster(4)
     
     prediction<-clusterR(raster_to_predict, predict, args = list(model))
     endCluster()

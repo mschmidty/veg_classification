@@ -6,6 +6,8 @@ mxd/
 model_runs/old_models/
 output/
 .Rproj.user/
+model_runs/
+
 
 # File Types
 ############
@@ -22,5 +24,6 @@ output/
 
 # Specific Files
 model_runs/ID_CV_model_BS_UPDATE/ID_CV_model_BS_UPDATE.rds
+model_runs/OTHER_VEG_NORM_scale/
 .Renviron
 .Rhistory

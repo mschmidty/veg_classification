@@ -38,29 +38,43 @@ This took over a day. Need to parallelize this bad!
 ```{r}
 source("R/load_funcs.R")
 library(doParallel)
-start_time<-Sys.time()
 
-n_cores<-24
-cl <- makeCluster(n_cores)
+rm(height_path, imagery_path, r, s,predict, model)
+gc()
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 1e+09
+)
+
+n_cores<-20
+cl<-makePSOCKcluster(n_cores) ##if you're on a mac, this should be makeCluster()
+
 registerDoParallel(cl)
 
+start_time<-Sys.time()
 train_data_all_add_height<-train_data_all_add_heights(
   training_poly_path = "shapefiles/training_polygons12N_03172020_UPDATE_OTHER_VEG.shp", 
   tile_shape_path = "shapefiles/SanMiguel_West.shp", 
   imagery_folder = "DATA/Tiffs_W_SM",
-  height_raster_folder = "DATA/NOC_heights/WestSM_dZgridded",
-  parallel = n_cores,
-  scale = TRUE
+  height_raster_folder = "DATA/NOC_heights/WestSM_dZgridded"
 )
-stopCluster(cl)
-
 start_time-Sys.time()
+
+final_data<-do.call(rbind, train_data_all_add_height)%>%
+  as_tibble()
+
+final_data<-do.call(rbind, data)%>%
+  as_tibble()
+
+stopCluster(cl)
 
 # new_test_data<-train_data_all_add_height%>%
 #   purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
 
-saveRDS(train_data_all_add_height, "DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale.rds")
+saveRDS(final_data, "DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
 ```
+
+
 
 ## Run Random Forest
 ```{r}
@@ -68,9 +82,10 @@ library(CAST)
 library(doParallel)
 library(caret)
 library(tidyverse)
+gc()
 set.seed(1234)
 options(scipen=999)
-data<-readRDS("DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale.rds")%>%
+data<-readRDS("DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")%>%
   drop_na()%>%
   mutate(Class = case_when(
     Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
@@ -86,14 +101,14 @@ trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
 data_train<-data[trainIndex, ]
 data_test<-data[-trainIndex, ]
 
-indeces<-CreateSpacetimeFolds(data_train, spacevar = "Id", k = 15)
+indeces<-CreateSpacetimeFolds(data_train, spacevar = "Id", k = 20)
 
 ##indeces$index
 
 
 
 control <- trainControl(method = "cv",
-                        number = 15,
+                        number = 20,
                         sampling="down",
                         index = indeces$index
                      )
@@ -120,6 +135,8 @@ start_time-end_time
 
 stopCluster(cl)
 
+##caret_fit_base<-readRDS("model_runs/UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+
 caret_fit_base
 
 prediction<-bind_cols(data_test, predict = predict(caret_fit_base, data_test))
@@ -128,7 +145,7 @@ prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predic
 
 varImp(caret_fit_base, scale = FALSE)
 
-saveRDS(caret_fit_base, "model_runs/OTHER_VEG_NORM_scale/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale.rds")
+##saveRDS(caret_fit_base, "model_runs/UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
 
 
 ```
@@ -136,18 +153,24 @@ saveRDS(caret_fit_base, "model_runs/OTHER_VEG_NORM_scale/training_polygons12N_03
 ## Make prediction with model
 ```{r}
 source("R/load_funcs.R")
+gc()
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 1e+09
+)
 tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif", full.names = T)%>%
   sample(10)
 
-tiles2<-tiles[3:8]
 
 always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
 
 tiles<-append(tiles, always_runs)
 
+tiles2<-tiles[3:13]
+
 start_time<-Sys.time()
-predict_raster(tiles, 
-               "model_runs/OTHER_VEG_NORM_scale/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale.rds", 
+predict_raster(tiles2, UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new
+               "model_runs//training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds", 
                "DATA/NOC_heights/WestSM_dZgridded")
 Sys.time()-start_time
 ```

@@ -67,11 +67,8 @@ height_merge<-function(imagery_path, height_raster_object){
 }
 
 height_merge2<-function(imagery_path, height_raster_object){
-  raster<-brick(imagery_path)
+  raster<-scale(brick(imagery_path), center = FALSE)
   
-  beginCluster(16)
-  raster<-clusterR(raster, scale, args = list(center = FALSE))
-  endCluster()
   
   if(crs(raster, asText = TRUE) != ifelse(
     is.na(crs(height_raster_object, asText = TRUE)), 
