@@ -1,0 +1,50 @@
+---
+title: "Snow Fall Tests"
+author: "Michael Schmidt"
+date: "4/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(snowfall)
+library(raster)
+library(dplyr)
+```
+
+```{r}
+imagery_path<-"DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif"
+r<-brick(imagery_path)
+
+r2<-r*2
+
+l<-list(r[[1]], r2[[1]])
+```
+
+```{r}
+rasterOptions(
+  maxmemory = 5e+10
+)
+start<-Sys.time()
+l2<-lapply(l, scale)
+Sys.time()-start
+
+```
+Took about 45 Seconds
+
+## Snowfall
+
+TBD
+```{r}
+start<-Sys.time()
+sfInit(parallel = TRUE, cpus = 2)
+l2<-sfLapply(l, scale)
+sfStop()
+Sys.time()-start
+```
+
+

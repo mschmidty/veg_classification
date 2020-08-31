@@ -392,7 +392,8 @@ It seems like for `scale()` increasing memory really helps, but with `predict()`
 the last thing I want to experiment with is doParallel. 
 ```{r}
 library(doParallel)
-
+library(tidyverse)
+library(raster)
 ```
 ## Let's try to 
 
