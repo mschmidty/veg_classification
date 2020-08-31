@@ -34,22 +34,144 @@ saveRDS(training_data, "DATA/training_data/training_polygons12N_02122020_BS_UPDA
 ```
 
 ## Make Training Datasets with New Method
+This took over a day. Need to parallelize this bad!
 ```{r}
 source("R/load_funcs.R")
-start_time<-Sys.time()
+library(doParallel)
 
-train_data_all_add_height<-train_data_all_add_heights(
-  training_poly_path = "shapefiles/training_polygons12N_02122020_BS_UPDATE.shp", 
-  tile_shape_path = "shapefiles/SanMiguel_West.shp", 
-  imagery_folder = "DATA/SanMiguel_West/Tiffs",
-  height_raster_folder = "DATA/NOC_heights/San_Miguel_West_Raster"
+rm(height_path, imagery_path, r, s,predict, model)
+gc()
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 1e+09
 )
 
+n_cores<-20
+cl<-makePSOCKcluster(n_cores) ##if you're on a mac, this should be makeCluster()
+
+registerDoParallel(cl)
+
+start_time<-Sys.time()
+train_data_all_add_height<-train_data_all_add_heights(
+  training_poly_path = "shapefiles/training_polygons12N_03172020_UPDATE_OTHER_VEG.shp", 
+  tile_shape_path = "shapefiles/SanMiguel_West.shp", 
+  imagery_folder = "DATA/Tiffs_W_SM",
+  height_raster_folder = "DATA/NOC_heights/WestSM_dZgridded"
+)
 start_time-Sys.time()
 
-mew_test_data<-train_data_all_add_height%>%
-  purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
+final_data<-do.call(rbind, train_data_all_add_height)%>%
+  as_tibble()
 
-saveRDS(mew_test_data, "DATA/training_data/training_polygons12N_02122020_BS_UPDATE2_normalized.rds")
+final_data<-do.call(rbind, data)%>%
+  as_tibble()
+
+stopCluster(cl)
+
+# new_test_data<-train_data_all_add_height%>%
+#   purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
+
+saveRDS(final_data, "DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+```
+
+
+
+## Run Random Forest
+```{r}
+library(CAST)
+library(doParallel)
+library(caret)
+library(tidyverse)
+gc()
+set.seed(1234)
+options(scipen=999)
+data<-readRDS("DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")%>%
+  drop_na()%>%
+  mutate(Class = case_when(
+    Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
+    Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
+    Class == 6 ~ "PJ", # PJ
+    Class == 1 ~ "BG_rock", # BG_rock
+    Class == 3 ~ "Grass" #Grass
+  ),
+  height = round(height, digits = 2))
+
+trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
+
+data_train<-data[trainIndex, ]
+data_test<-data[-trainIndex, ]
+
+indeces<-CreateSpacetimeFolds(data_train, spacevar = "Id", k = 20)
+
+##indeces$index
+
+
+
+control <- trainControl(method = "cv",
+                        number = 20,
+                        sampling="down",
+                        index = indeces$index
+                     )
+
+mtry<-c(2:4)
+tunegrid <-expand.grid(.mtry = mtry)
+
+no_cores<-4
+cl<-makePSOCKcluster(no_cores)
+registerDoParallel(cl)
+
+start_time<-Sys.time()
+caret_fit_base<-train(as.factor(Class) ~ . , 
+                  data=select(data_train, -Id),
+                  method="rf",
+                  trControl=control,
+                  tuneGrid=tunegrid,
+                  metric= "Accuracy",
+                  ntree = 1500
+                  )
+end_time<-Sys.time()
+
+start_time-end_time
+
+stopCluster(cl)
+
+##caret_fit_base<-readRDS("model_runs/UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+
+caret_fit_base
+
+prediction<-bind_cols(data_test, predict = predict(caret_fit_base, data_test))
+
+prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predict)$table, 2)
+
+varImp(caret_fit_base, scale = FALSE)
+
+##saveRDS(caret_fit_base, "model_runs/UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+
+
+```
+
+## Make prediction with model
+```{r}
+source("R/load_funcs.R")
+gc()
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 1e+09
+)
+tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif", full.names = T)%>%
+  sample(10)
+
+
+always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
+
+tiles<-append(tiles, always_runs)
+
+tiles2<-tiles[3:13]
+
+start_time<-Sys.time()
+predict_raster(tiles2, UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new
+               "model_runs//training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds", 
+               "DATA/NOC_heights/WestSM_dZgridded")
+Sys.time()-start_time
 ```
 

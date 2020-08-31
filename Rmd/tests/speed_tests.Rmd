@@ -17,7 +17,9 @@ library(dplyr)
 
 ## Load the imagery path
 ```{r}
-imagery_path<-"DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif"
+# imagery_path<-"DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif"
+
+imagery_path<-"DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif"
 r<-brick(imagery_path)
 ```
 
@@ -93,7 +95,7 @@ rm(scale_r)
 gc()
 rasterOptions()
 rasterOptions(
-  maxmemory = 1e+10,
+  maxmemory = 9e+10,
   chunksize = 1e+08
 )
 
@@ -110,7 +112,7 @@ Wow big performance improvements. One fifth the time on my machine.
 rm(scale_r)
 gc()
 rasterOptions(
-  maxmemory = 1e+10,
+  maxmemory = 9e+10,
   chunksize = 1e+09
 )
 
@@ -239,7 +241,8 @@ I'm going to use predict function to predict a dataset.
 ```{r}
 clip<-st_read("shapefiles/clip_shape_gypsum_gap_nw_0103.shp")
 
-height_path<-"DATA/NOC_heights/San_Miguel_West_Raster/SM_GYPSUMGAPNW_0103_180611_dz.tif"
+#height_path<-"DATA/NOC_heights/San_Miguel_West_Raster/SM_GYPSUMGAPNW_0103_180611_dz.tif"
+height_path<-"DATA/NOC_heights/WestSM_dZgridded/SM_GYPSUMGAPNW_0103_180611_dz.tif"
 h<-raster(height_path)
 
 
@@ -334,7 +337,7 @@ Twice as fast.  Now let's try to increase the memory and the cores.
 rm(predict)
 gc()
 rasterOptions(
-  maxmemory = 5e+10,
+  maxmemory = 1e+11,
   chunksize = 1e+08
 )
 

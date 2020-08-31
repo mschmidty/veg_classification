@@ -8,7 +8,7 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
   
   for(i in seq(1:length(vector_of_file_paths))){
     print(paste0("Starting ", basename(vector_of_file_paths[i]), " which is ", i, " out of ", length(vector_of_file_paths), ".", "TIME: ", Sys.time()))
-    beginCluster(10)
+    
     
     
     
@@ -18,7 +18,10 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
     raster_to_predict<-height_merge2(vector_of_file_paths[i], height_raster)
     names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
     
+    beginCluster(4)
+    
     prediction<-clusterR(raster_to_predict, predict, args = list(model))
+    endCluster()
     
     output_path<-dirname(model_path)
     
@@ -36,23 +39,14 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
     
     
     writeRaster(prediction, output_path)
-    endCluster()
+    
     print(paste0("Tile ", basename(vector_of_file_paths[i]), " finished @: ", Sys.time()))
     
   }
 }
 
 
-##testing
 
-tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif", full.names = T)%>%
-  sample(3)
-
-start_time<-Sys.time()
-predict_raster(tiles, 
-               "model_runs/ID_CV_model_BS_UPDATE_normalized/ID_CV_model_BS_UPDATE3_normalized.rds", 
-               "DATA/NOC_heights/WestSM_dZgridded")
-Sys.time()-start_time
 
 
 

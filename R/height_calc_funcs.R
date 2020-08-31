@@ -67,8 +67,8 @@ height_merge<-function(imagery_path, height_raster_object){
 }
 
 height_merge2<-function(imagery_path, height_raster_object){
-  raster<-brick(imagery_path)%>%
-    rangify()
+  raster<-scale(brick(imagery_path), center = FALSE)
+  
   
   if(crs(raster, asText = TRUE) != ifelse(
     is.na(crs(height_raster_object, asText = TRUE)), 
@@ -90,6 +90,14 @@ height_merge2<-function(imagery_path, height_raster_object){
     crop(height_raster_object, datatype = dataType(.))%>%
     stack(height_raster_object)
 }
+# 
+# imagery_path<-"DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif"
+# r<-brick(imagery_path)
+# 
+# height_path<-"DATA/NOC_heights/WestSM_dZgridded/SM_GYPSUMGAPNW_0103_180611_dz.tif"
+# h<-raster(height_path)
+# 
+# height_merge2(imagery_path, h)
 
 
 
