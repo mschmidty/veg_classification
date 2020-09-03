@@ -66,8 +66,12 @@ height_merge<-function(imagery_path, height_raster_object){
     stack(height_raster_object)
 }
 
-height_merge2<-function(imagery_path, height_raster_object){
-  raster<-scale(brick(imagery_path), center = FALSE)
+height_merge2<-function(imagery_path, height_raster_object, norm=FALSE){
+  raster<-brick(imagery_path)
+  if(norm==TRUE){
+    raster<-scale(raster, center = FALSE)
+  }
+  
   
   
   if(crs(raster, asText = TRUE) != ifelse(

@@ -1,0 +1,367 @@
+---
+title: "Compare Scale Options"
+author: "Michael Schmidt"
+date: "9/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(raster)
+library(tidyverse)
+library(conflicted)
+library(RStoolbox)
+library(snow)
+library(landsat)
+
+conflict_prefer("extract", "raster")
+
+r_0102<-stack("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif")
+r_0101<-stack("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0101_180611.tif")
+r_0103<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
+r_0104<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
+r_0203<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0203_180611.tif")
+r_0204<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0204_180611.tif")
+
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 5e+08
+)
+```
+Data
+```{r}
+imagery_path<-"DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif"
+r<-brick(imagery_path)
+```
+
+Change Raster Options
+```{r}
+rasterOptions()
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 5e+08
+)
+```
+
+## Raster Scale
+```{r}
+start<-Sys.time()
+test_raster<-scale(r[[1:3]], scale = FALSE)
+Sys.time()-start
+```
+
+Time difference of 2.141791 mins
+
+## RStoolbox
+```{r}
+start<-Sys.time()
+text_rs<-normImage(r[[1:3]], norm = FALSE)
+Sys.time()-start
+```
+
+Time difference of 1.87762 mins
+
+## Make sure they are the same. 
+```{r}
+crop_extent<-raster::extent(699959.8, 700000, 4220409, 4220450)
+crop_rs<-text_rs%>%
+  crop(crop_extent)%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  rename(band1=1, band2=2, band3=3)%>%
+  mutate(from = "RStoolbox")
+
+crop_scale<-test_raster%>%
+  crop(crop_extent)%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  rename(band1=1, band2=2, band3=3)%>%
+  mutate(from = "raster")
+
+crop_rs%>%
+  rbind(crop_scale)%>%
+  pivot_longer(-from)%>%
+  ggplot(aes(name, value, color = from))+
+  geom_boxplot()
+
+```
+
+They are the same. 
+
+## Raster Scale
+```{r}
+start<-Sys.time()
+test_raster_all_layers<-scale(r, scale = FALSE)
+Sys.time()-start
+```
+
+Time difference of 2.141791 mins
+
+## RStoolbox
+```{r}
+start<-Sys.time()
+test_rs_al_layers<-normImage(r, norm = FALSE)
+Sys.time()-start
+```
+
+
+```{r}
+r_0102<-stack("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif")
+r_0101<-stack("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0101_180611.tif")
+r_0103<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif")
+r_0104<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
+r_0203<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0203_180611.tif")
+r_0204<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0204_180611.tif")
+r_list<-list(r_0101, r_0102,r_0103, r_0104,r_0203,r_0204)
+
+r_list[1:2]
+
+
+rm(list)
+
+scale_func<-function(raster, rs=FALSE, scale = FALSE){
+  
+  if(rs==TRUE){
+    normImage(raster, norm = scale)
+  }else{
+    scale(raster, scale=scale)
+  }
+}
+
+start<-Sys.time()
+test<-lapply(r_list[1:4], normImage, norm=FALSE)
+Sys.time()-start
+
+test2<-lapply(r_list[5:6], normImage, norm=FALSE)
+
+all_rasters<-c(test, test2)
+
+lapply(all_rasters, extent)
+
+rasters_all[1]%>%
+  crop(rasters_all[3])
+
+overlap_merge<-function(x, y, tile_name1="x", tile_name2="y"){
+  r1<-x%>%
+    raster::crop(y)%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    mutate(tile=tile_name1)
+  
+  r2<-y%>%
+    raster::crop(x)%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    mutate(tile=tile_name2)
+  
+  r1%>%
+    rbind(r2)
+}
+
+o_13_14<-overlap_merge(all_rasters[1][[1]], all_rasters[2][[1]], "0103", "0104")
+
+all_rasters[1][[1]]%>%
+  crop(all_rasters[2])
+
+o_13_14%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+```
+
+```{r}
+test3<-lapply(r_list[5:6], normImage, norm=TRUE)
+
+
+cent<-overlap_merge(test3[1][[1]], test3[2][[1]], "cent02030", "cent0204")
+
+cent%>%
+  dplyr::filter(row_number() %% 10 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+no_cent<-overlap_merge(all_rasters[5][[1]], all_rasters[6][[1]], "0203", "0204")
+
+no_cent%>%
+  ##dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+```
+
+
+Histogram matching test
+```{r}
+hist_match_test<-histMatch(all_rasters[5][[1]], all_rasters[6][[1]])
+
+hist_match_overlap<-overlap_merge(hist_match_test,all_rasters[6][[1]], "hist_match", "0204")
+
+hist_match_overlap%>%
+  dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+
+r_list<-lapply(r_list[2:6], histMatch, r_list[[1]])
+
+names(r_list[1])
+
+names(r_list)<-c("0102", "0103", "0104", "0203", "0204")
+
+lapply(r_list, function(x){
+  name<-c("0102", "0103", "0104", "0203", "0204")
+  writeRaster(x, paste0("output/hist_match_test/hist_match_test_", name[i],".tiff"))
+  
+})
+
+for( i in seq(from=1, to=5, by=1)){
+  name<-c("0102", "0103", "0104", "0203", "0204")
+  writeRaster(r_list[i][[1]], paste0("output/hist_match_test/hist_match_test_", name[i],".tiff"))
+}
+
+test_match<-overlap_merge(r_list[1][[1]], r_list[2][[1]])
+
+x<-r_list[1][[1]]%>%
+  crop(r_list[2][[1]])
+
+y<-r_list[2][[1]]%>%
+  crop(r_list[1][[1]])
+
+x%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  rename(band1=1, band2=2, band3=3, band4=4)%>%
+  mutate(tile="0102")%>%
+  rbind(
+    y%>%
+      as.data.frame()%>%
+      as_tibble()%>%
+      rename(band1=1, band2=2, band3=3, band4=4)%>%
+      mutate(tile="0103")
+  )%>%
+  dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+
+hist_match_0102<-histMatch(r_0102, r_0101)
+hist_match_0103<-histMatch(r_0103, r_0101)
+
+hist_match_0102<-histMatch(r_0102, r_0101, intersectOnly = T)
+hist_match_0103<-histMatch(r_0103, hist_match_0102, intersectOnly = T)
+
+writeRaster(hist_match_0102, "output/hist_match_test/hist_adj_0102.tiff")
+writeRaster(hist_match_0103, "output/hist_match_test/hist_adj2_0103.tiff")
+
+overlap_merge<-function(x, y, tile_name1="x", tile_name2="y"){
+  r1<-x%>%
+    raster::crop(y)%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    mutate(tile=tile_name1)%>%
+    rename(band1=1, band2=2, band3=3, band4=4)
+  
+  r2<-y%>%
+    raster::crop(x)%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    mutate(tile=tile_name2)%>%
+    rename(band1=1, band2=2, band3=3, band4=4)
+  
+  r1%>%
+    rbind(r2)
+}
+
+ov<-overlap_merge(r_0101, hist_match_0102, "0101", "0102")
+
+ov%>%
+  dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+
+```
+
+
+PIF matching test
+```{r}
+
+test<-RStoolbox::pifMatch(r_0101, r_0102, quantile = 0.8, returnPifMap = F, returnSimMap = F)
+
+data(lsat)
+
+lsat_b <- log(lsat)
+## Run pifMatch
+lsat_b_adjusted <- pifMatch(lsat_b, lsat)
+```
+
+Band by band histogram mataching
+```{r}
+
+t<-histMatch(r_0103[[1]], r_0104[[1]])
+
+t%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  rename_if(is.numeric, ~names_r)
+
+
+
+overlap_merge<-function(x, y, tile_name1="x", tile_name2="y"){
+  
+  r1<-x%>%
+    raster::crop(y, datatype=dataType(x)[1])%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    rename_if(is.numeric, ~sapply(seq(1,nlayers(x), 1), function(i){
+      paste0("band", i)
+    }))%>%
+    mutate(tile=tile_name1)
+  
+  r2<-y%>%
+    raster::crop(x, datatype=dataType(y)[1])%>%
+    as.data.frame()%>%
+    as_tibble()%>%
+    rename_if(is.numeric, ~sapply(seq(1,nlayers(y), 1), function(i){
+      paste0("band", i)
+    }))%>%
+    mutate(tile=tile_name2)
+  
+  r1%>%
+    rbind(r2)
+}
+
+o<-overlap_merge(t, r_0104[[1]])
+o%>%
+  dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+
+overlap_merge(r_0204, r_0104)%>%
+  dplyr::filter(row_number() %% 20 == 0)%>%
+  pivot_longer(-tile)%>%
+  ggplot(aes(name, value, color=tile))+
+  geom_boxplot()
+
+dataType(r_0101)
+
+# seq(1,nlayers(r_0103), 1)
+# lapply(seq(1,nlayers(r_0103), 1), function(i, x, y){
+#   
+#   
+#   
+# }, r_0103, r_0104)
+
+
+
+```
+

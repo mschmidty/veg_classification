@@ -96,8 +96,6 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
 }
 
 train_data3<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
-  library(dplyr)
-  library(raster)
   
   tile_path<-paste(imagery_folder, imagery_name, sep = "/")
   

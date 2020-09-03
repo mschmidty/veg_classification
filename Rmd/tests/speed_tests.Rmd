@@ -523,7 +523,50 @@ Sys.time()-start
 
 This didn't work quite as well as I expected. `doParallel` sems to be the way to go, here. 
 
+New speed tests.
+```{r}
+imagery_path<-"DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif"
+r<-brick(imagery_path)
+r1<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif")
+r2<-brick("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
 
+r_list<-list(r1[[1:2]], r1[[1:2]], r2[[1:2]])
+
+rasterOptions(
+  maxmemory = 5e+10,
+  chunksize = 1e+08
+)
+
+scale_func<-function(raster, parallel = 0){
+  if(parallel>1){
+    beginCluster(parallel, type="SOCK")
+    clusterR(raster, scale(), args = list(center = TRUE, scale = FALSE))
+    endCluster()
+  }else{
+    scale(raster, scale = FAlSE)
+  }
+}
+
+scale_func(r1, parallel=6)
+
+library(snow)
+cl<-makeCluster(6,type="SOCK")
+system.time(clusterApply(cl, z,function(x) Sys.sleep(1)))
+stopCluster(cl)
+
+scale_func<-function(raster){
+  raster::scale(raster, scale=FALSE)
+}
+
+start<-Sys.time()
+cl<-makeCluster(6,type="SOCK")
+test<-clusterApply(cl, r_list, scale_func)
+stopCluster(cl)
+Sys.time()-start
+
+
+
+```
 
 
 
