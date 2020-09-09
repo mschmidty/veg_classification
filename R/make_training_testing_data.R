@@ -174,7 +174,7 @@ train_data3<-function(imagery_name, imagery_folder, height_raster_folder, traini
 train_data_all<-function(training_poly_path, tile_shape_path, height_imagery_folder){
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
-  final_data_list<-sapply(tile_list, train_data, height_imagery_folder, training_poly_path, simplify = T)
+  final_data_list<-sapply(tile_list, train_data2, height_imagery_folder, training_poly_path, simplify = T)
   
   do.call(rbind, final_data_list)%>%
     as_tibble()
@@ -190,23 +190,12 @@ train_data_all_add_heights<-function(
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
   list_length<-length(tile_list)
-  final_data_list<-vector(mode = "list", length = list_length)
   
-  if(parallel==TRUE){
-    final_data_list<-foreach(i = 1:list_length) %dopar% {
-      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
-    }
-    
-  }else{
-    for(i in seq(1:list_length)){
-      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
-    }
-  }
+  lapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path)
   
   
   ##final_data_list<-sapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path, simplify = T)
   
   # do.call(rbind, final_data_list)%>%
   #   as_tibble()
-  final_data_list
 }
