@@ -16,7 +16,11 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
       raster()
     
     raster_to_predict<-height_merge2(vector_of_file_paths[i], height_raster)
-    names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
+    if(nlayers(raster_to_predict)==5){
+      names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
+    }else{
+      names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "MSAVI2","height")
+    }
     
     beginCluster(4)
     
@@ -44,9 +48,4 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
     
   }
 }
-
-
-
-
-
 

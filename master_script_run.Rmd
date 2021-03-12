@@ -43,7 +43,7 @@ rm(height_path, imagery_path, r, s,predict, model)
 gc()
 rasterOptions(
   maxmemory = 5e+10,
-  chunksize = 5e+08
+  chunksize = 1e+09
 )
 
 n_cores<-20
@@ -53,7 +53,7 @@ registerDoParallel(cl)
 
 start_time<-Sys.time()
 train_data_all_add_height<-train_data_all_add_heights(
-  training_poly_path = "shapefiles/training_polygons12N_03172020_UPDATE_OTHER_VEG.shp", 
+  training_poly_path = "shapefiles/training_polygons12N_09152020_ADD_SHADOW.shp", 
   tile_shape_path = "shapefiles/SanMiguel_West.shp", 
   imagery_folder = "DATA/SanMiguel_West/Tiffs",
   height_raster_folder = "DATA/NOC_heights/WestSM_dZgridded"
@@ -71,7 +71,7 @@ stopCluster(cl)
 # new_test_data<-train_data_all_add_height%>%
 #   purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
 
-saveRDS(final_data, "DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new.rds")
+saveRDS(final_data, "DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")
 ```
 
 
@@ -85,16 +85,19 @@ library(tidyverse)
 gc()
 set.seed(1234)
 options(scipen=999)
-data<-readRDS("DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new.rds")%>%
+
+data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
   drop_na()%>%
   mutate(Class = case_when(
     Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
     Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
     Class == 6 ~ "PJ", # PJ
     Class == 1 ~ "BG_rock", # BG_rock
-    Class == 3 ~ "Grass" #Grass
+    Class == 3 ~ "Grass", #Grass
+    Class == 8 ~ "Shadow"
   ),
   height = round(height, digits = 2))
+
 
 trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
 
@@ -145,7 +148,7 @@ prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predic
 
 varImp(caret_fit_base, scale = FALSE)
 
-saveRDS(caret_fit_base, "model_runs/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new_new.rds")
+saveRDS(caret_fit_base, "model_runs/training_polygons12N_09152020_ADD_SHADOW/training_polygons12N_09152020_ADD_SHADOW.rds")
 
 
 ```
@@ -158,19 +161,19 @@ rasterOptions(
   maxmemory = 5e+10,
   chunksize = 1e+09
 )
-tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif", full.names = T)%>%
+tiles<-list.files("DATA/SanMiguel_West/Tiffs", pattern = ".tif", full.names = T)%>%
   sample(10)
 
 
-always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
+always_runs<-c("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif", "DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif" , "DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
 
-tiles<-append(tiles, always_runs)
+tiles<-append(always_runs, tiles)
 
-tiles2<-tiles[3:13]
+##tiles2<-tiles[3:13]
 
 start_time<-Sys.time()
-predict_raster(tiles2, UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new
-               "model_runs//training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds", 
+predict_raster(always_runs, 
+               "model_runs/fall_2020_v1/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new_new.rds", 
                "DATA/NOC_heights/WestSM_dZgridded")
 Sys.time()-start_time
 ```

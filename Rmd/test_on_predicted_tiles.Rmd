@@ -1,0 +1,249 @@
+---
+title: "Tile Checks"
+author: "Michael Schmidt"
+date: "3/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Check output compression
+The Tiffs seem to already be as compressed as they can get. 
+```{r}
+library(raster)
+
+
+tile_check<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/MODEL_shadow_model_and_MSAVI_V2_TILE_SM_BarkelewDrawSE_0401_180611.tif")
+
+tile_check
+
+writeRaster(tile_check, "output/compression_test/test_tile.tif")
+writeRaster(tile_check, "output/compression_test/test_tile2.tif",options="COMPRESS=LZW")
+writeRaster(tile_check, "output/compression_test/banana", datatype="INT2U" ,options="COMPRESS=LZW", overwrite=T)
+```
+
+## This is a test of the approach below
+```{r}
+file_paths<-list.files("model_runs/Shadow_Class_MSAVI_No_Scale_V2/", full.names=T, pattern=".tif$")
+
+raster_list<-lapply(file_paths[1:3], raster)
+
+raster_merge_list<-list()
+
+raster_merge_list$filename<-raster_list
+
+raster_list$overwrite<-FALSE
+
+test_raster<-do.call(merge, raster_list)
+plot(test_raster)
+```
+Sage = 5
+```{r}
+file_paths<-list.files("model_runs/Shadow_Class_MSAVI_No_Scale_V2/", full.names=T, pattern=".tif$")
+
+time_start<-Sys.time()
+
+raster_list<-lapply(file_paths, raster)
+
+raster_list$overwrite<-FALSE
+
+merged_raster<-do.call(merge, raster_list)
+
+Sys.time()-time_start
+
+writeRaster(merged_raster, "model_runs/Shadow_Class_MSAVI_No_Scale_V2/merged_MODEL_shadow_model_and_MSAVI_V2_non_compressed.tif")
+```
+
+
+## Working with moving window
+
+### 1. 1 for sage 0 for everything else
+
+I'm starting with a small tile as a test. 
+
+```{r}
+library(raster)
+library(tidyverse)
+
+rasterOptions(
+  chunksize = 1e+09,
+  maxmemory = 1e+10
+)
+
+
+tile_check<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/MODEL_shadow_model_and_MSAVI_V2_TILE_SM_BarkelewDrawSE_0401_180611.tif")
+
+tile_check[tile_check %in% c(6, 4, 3, 2, 1)]<-0
+
+tile_check[tile_check==5]<-1
+
+sage_cells<-function(x){
+  x[x %in% c(6, 4, 3, 2, 1)]<-0
+
+  x[x==5]<-1
+  
+  return(x)
+}
+
+tile_check<-sage_cells(tile_check)
+
+plot(tile_check)
+
+ag_5m_sage<-aggregate(tile_check, fact = 50, fun=sum, na.rm=T)
+ag_5m_sage%>%
+  plot()
+
+window_5m_3_by_3<-focal(ag_5m_sage, w=matrix(1/22500, nrow=3, ncol=3))
+window_5m_5_by_5<-focal(ag_5m_sage, w=matrix(1/62500, nrow=5, ncol=5))
+
+writeRaster(window_5m_3_by_3, "output/aggregate_test/window_5m_pixels_15m_window.tiff")
+writeRaster(window_5m_5_by_5, "output/aggregate_test/window_5m_pixels_25m_window.tiff")
+
+plot(window_5m_5_by_5)
+
+```
+
+## using reclassify so that we don't blow up the memory
+
+```{r}
+m<-c(1,0, 2,0, 3,0, 4,0, 5,1, 6,0)
+
+rclmat<-matrix(m, ncol=2, byrow=T)
+
+rc<-reclassify(tile_check, rclmat)
+
+beginCluster(4, type='SOCK')
+clusterR(tile_check, reclassify, args=list(rcl=rclmat))
+endCluster()
+
+plot(rc)
+
+rc
+```
+
+
+```{r}
+library(raster)
+rasterOptions(tmpdir="output/raster_temp",
+              chunksize = 1e+09,
+              maxmemory = 1e+10)
+
+dcb<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/merged_MODEL_shadow_model_and_MSAVI_V2_non_compressed.tif")
+
+m<-c(1,0, 2,0, 3,0, 4,0, 5,1, 6,0)
+rclmat<-matrix(m, ncol=2, byrow=T)
+
+sage<-reclassify(dcb, rclmat)
+
+writeRaster(sage, "model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_only.tif")
+
+sage_only<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_only.tif")
+
+sage_only_5m<-aggregate(sage_only, fact = 50)
+
+
+writeRaster(sage_only_5m, "model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_only_5m.tif")
+
+plot(sage_only_5m)
+```
+## I failed to do everything above on the whole basin, so below we are going to do a tiled approach. 
+```{r}
+
+aggregate_single<-function(filepath,rclmat,fact, output_folder=FALSE){
+  raster<-raster(filepath)
+  reclassified_raster<-reclassify(raster, rclmat)
+  
+  if(output_folder==FALSE){
+    aggregate_raster<-aggregate(reclassified_raster, fact=fact, fun=sum, na.rm=T)
+    return(aggregate_raster)
+  }else{
+    aggregate(reclassified_raster, fact=fact, fun=sum, na.rm=T, filename=paste0(output_folder, "/5m_", basename(filepath)))
+  }
+}
+
+fp<-"model_runs/Shadow_Class_MSAVI_No_Scale_V2/MODEL_shadow_model_and_MSAVI_V2_TILE_SM_BarkelewDrawSE_0401_180611.tif"
+
+m<-c(1,0, 2,0, 3,0, 4,0, 5,1, 6,0)
+matrix_stuff<-matrix(m, ncol=2, byrow=T)
+
+test<-aggregate_single(fp, matrix_stuff, fact=50)
+
+start_time<-Sys.time()
+aggregate_single(fp, matrix_stuff, fact=50, output_folder="output/aggregate_test")
+Sys.time()-start_time
+
+
+plot(test)
+
+```
+
+## Make it Parallel
+```{r}
+file_paths<-list.files(
+  "model_runs/Shadow_Class_MSAVI_No_Scale_V2", 
+  full.names=TRUE, 
+  pattern = ".tif$")
+
+library(parallel)
+library(doParallel)
+n_cores<-detectCores(logical=TRUE)-2
+
+cl<-makeCluster(n_cores)
+registerDoParallel(cl)
+
+clusterEvalQ(cl, library(raster))
+clusterExport(cl, list('aggregate_single'))
+
+parLapply(cl, 
+          file_paths, 
+          fun=aggregate_single, 
+          rclmat=matrix_stuff, 
+          fact=50,
+          output_folder="model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate")
+
+stopCluster(cl)
+```
+
+## merge th 5m rasters
+```{r}
+library(raster)
+library(dplyr)
+file_paths<-list.files("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate", full.names=T, pattern=".tif$")
+
+read_raster<-function(x){
+  raster<-raster(x)
+  names(raster)<-c("values")
+  return(raster)
+}
+
+raster_list<-lapply(file_paths, read_raster)
+
+new_raster_list<-raster_list[106:132]
+
+new_raster_list$overlap<-FALSE
+new_raster_list$tolerance<-2
+
+start_time<-Sys.time()
+merged_raster<-do.call(merge, new_raster_list)
+Sys.time()-start_time
+
+plot(merged_raster)
+
+raster::merge(raster_list[[24]], raster_list[[25]], tolerance=0.5)%>%
+  plot()
+
+plot(raster_list[[25]])
+plot(raster_list[[24]], add=T)
+```
+Everything above has failed.  We now try gdal utilities. 
+```{r}
+library(gdalUtils)
+
+gdalbuildvrt(gdalfile="model_runs/Shadow_Class_MSAVI_No_Scale_V2/*.tif",
+             output.vrt = "model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/dev.vrt")
+
+
+```
+
+

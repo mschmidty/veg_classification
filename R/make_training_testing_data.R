@@ -62,12 +62,15 @@ train_data<-function(imagery_name, imagery_folder, training_poly_path){
 
 train_data2<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
   
+  
   tile_path<-paste(imagery_folder, imagery_name, sep = "/")
   
   height_raster_path<-lfn_2(tile_path, height_raster_folder)
   height_raster<-raster::raster(height_raster_path)
   
   height_tile_merge<-height_merge2(tile_path, height_raster)
+  
+  print(paste0("Load raster and add height: ", tile_path))
   
   train_polys<-sf::st_read(training_poly_path)%>%
     mutate(Id = as.numeric(rownames(.)))%>%
@@ -79,18 +82,30 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
       Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush") ~ 4,
       Class == "Other_Veg" ~ 5, 
       Class == "PJ" ~ 6, 
-      Class == "Sage" ~ 7
+      Class == "Sage" ~ 7,
+      Class == "Shadow" ~ 8
     ))
   
   train_polys_class_raster<-raster::rasterize(train_polys, height_tile_merge[[1]], field = "Class", silent = T) 
   train_polys_id_raster<-raster::rasterize(train_polys, height_tile_merge[[1]], field = "Id", silent = T)
   
+  print("rasterized complete")
+  
   comb<-stack(height_tile_merge, train_polys_class_raster)%>%
     stack(train_polys_id_raster)
   
-  names(comb)<-c("band1", "band2", "band3", "band4", "height", "Class", "Id")
+  if(nlayers(comb)==7){
+    names(comb)<-c("band1", "band2", "band3", "band4", "height", "Class", "Id")
+  }else{
+    names(comb)<-c("band1", "band2", "band3", "band4", "MSAVI2","height", "Class", "Id")
+  }
+  
+  print("rename complete")
+  
   
   dissolve_shape<-sf::st_union(train_polys)
+  
+  print("dissolve complete")
   
   raster::extract(comb, as_Spatial(dissolve_shape))[[1]]
 }
