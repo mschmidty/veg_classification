@@ -62,12 +62,15 @@ train_data<-function(imagery_name, imagery_folder, training_poly_path){
 
 train_data2<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
   
+  
   tile_path<-paste(imagery_folder, imagery_name, sep = "/")
   
   height_raster_path<-lfn_2(tile_path, height_raster_folder)
   height_raster<-raster::raster(height_raster_path)
   
   height_tile_merge<-height_merge2(tile_path, height_raster)
+  
+  print(paste0("Load raster and add height: ", tile_path))
   
   train_polys<-sf::st_read(training_poly_path)%>%
     mutate(Id = as.numeric(rownames(.)))%>%
@@ -79,25 +82,35 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
       Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush") ~ 4,
       Class == "Other_Veg" ~ 5, 
       Class == "PJ" ~ 6, 
-      Class == "Sage" ~ 7
+      Class == "Sage" ~ 7,
+      Class == "Shadow" ~ 8
     ))
   
   train_polys_class_raster<-raster::rasterize(train_polys, height_tile_merge[[1]], field = "Class", silent = T) 
   train_polys_id_raster<-raster::rasterize(train_polys, height_tile_merge[[1]], field = "Id", silent = T)
   
+  print("rasterized complete")
+  
   comb<-stack(height_tile_merge, train_polys_class_raster)%>%
     stack(train_polys_id_raster)
   
-  names(comb)<-c("band1", "band2", "band3", "band4", "height", "Class", "Id")
+  if(nlayers(comb)==7){
+    names(comb)<-c("band1", "band2", "band3", "band4", "height", "Class", "Id")
+  }else{
+    names(comb)<-c("band1", "band2", "band3", "band4", "MSAVI2","height", "Class", "Id")
+  }
+  
+  print("rename complete")
+  
   
   dissolve_shape<-sf::st_union(train_polys)
+  
+  print("dissolve complete")
   
   raster::extract(comb, as_Spatial(dissolve_shape))[[1]]
 }
 
 train_data3<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
-  library(dplyr)
-  library(raster)
   
   tile_path<-paste(imagery_folder, imagery_name, sep = "/")
   
@@ -176,7 +189,7 @@ train_data3<-function(imagery_name, imagery_folder, height_raster_folder, traini
 train_data_all<-function(training_poly_path, tile_shape_path, height_imagery_folder){
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
-  final_data_list<-sapply(tile_list, train_data, height_imagery_folder, training_poly_path, simplify = T)
+  final_data_list<-sapply(tile_list, train_data2, height_imagery_folder, training_poly_path, simplify = T)
   
   do.call(rbind, final_data_list)%>%
     as_tibble()
@@ -192,23 +205,12 @@ train_data_all_add_heights<-function(
   tile_list<-model_tiles(tile_shape_path, training_poly_path)
   
   list_length<-length(tile_list)
-  final_data_list<-vector(mode = "list", length = list_length)
   
-  if(parallel==TRUE){
-    final_data_list<-foreach(i = 1:list_length) %dopar% {
-      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
-    }
-    
-  }else{
-    for(i in seq(1:list_length)){
-      final_data_list[[i]]<-train_data2(tile_list[i], imagery_folder, height_raster_folder, training_poly_path)
-    }
-  }
+  lapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path)
   
   
   ##final_data_list<-sapply(tile_list, train_data2, imagery_folder, height_raster_folder, training_poly_path, simplify = T)
   
   # do.call(rbind, final_data_list)%>%
   #   as_tibble()
-  final_data_list
 }

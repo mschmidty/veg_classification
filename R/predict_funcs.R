@@ -16,9 +16,12 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
       raster()
     
     raster_to_predict<-height_merge2(vector_of_file_paths[i], height_raster)
-    names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "MSAVI", "height")
-    
-    
+    if(nlayers(raster_to_predict)==5){
+      names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
+    }else{
+      names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "MSAVI2","height")
+    }
+
     
     prediction<-predict(raster_to_predict, model)
     
@@ -44,6 +47,7 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
   }
 }
 
+<<<<<<< HEAD
 
 predict_raster2<-function(tile_path, model, height_raster_folder, model_name, output_folder = NULL){
   print(paste0("Starting ", tile_path, ".", "TIME: ", Sys.time()))
@@ -84,3 +88,5 @@ predict_raster2<-function(tile_path, model, height_raster_folder, model_name, ou
 
 
 
+=======
+>>>>>>> bca64543fc5c9353469bdd2ee4ebec38d291cc02

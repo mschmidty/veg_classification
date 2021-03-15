@@ -1,6 +1,7 @@
 ##library(lidR)
 library(raster)
 library(tidyverse)
+library(RStoolbox)
 
 #' This Script is used to calculate heights from a point cloud. 
 #' 

@@ -22,7 +22,7 @@ source("R/make_training_testing_data.R")
 start_time<-Sys.time()
 
 training_data<-train_data_all(
-  training_poly_path = "shapefiles/training_polygons12N_02122020_BS_UPDATE.shp", 
+  training_poly_path = "training_polygons12N_03172020_UPDATE_OTHER_VEG.shp", 
   tile_shape_path = "shapefiles/SanMiguel_West.shp", 
   height_imagery_folder = "DATA/SanMiguel_West_heights_added"
 )
@@ -53,9 +53,9 @@ registerDoParallel(cl)
 
 start_time<-Sys.time()
 train_data_all_add_height<-train_data_all_add_heights(
-  training_poly_path = "shapefiles/training_polygons12N_03172020_UPDATE_OTHER_VEG.shp", 
+  training_poly_path = "shapefiles/training_polygons12N_09152020_ADD_SHADOW.shp", 
   tile_shape_path = "shapefiles/SanMiguel_West.shp", 
-  imagery_folder = "DATA/Tiffs_W_SM",
+  imagery_folder = "DATA/SanMiguel_West/Tiffs",
   height_raster_folder = "DATA/NOC_heights/WestSM_dZgridded"
 )
 start_time-Sys.time()
@@ -71,7 +71,7 @@ stopCluster(cl)
 # new_test_data<-train_data_all_add_height%>%
 #   purrr::set_names(c("band1", "band2", "band3", "band4", "height", "Class", "Id"))
 
-saveRDS(final_data, "DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+saveRDS(final_data, "DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")
 ```
 
 
@@ -85,16 +85,19 @@ library(tidyverse)
 gc()
 set.seed(1234)
 options(scipen=999)
-data<-readRDS("DATA/training_data/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")%>%
+
+data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
   drop_na()%>%
   mutate(Class = case_when(
     Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
     Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
     Class == 6 ~ "PJ", # PJ
     Class == 1 ~ "BG_rock", # BG_rock
-    Class == 3 ~ "Grass" #Grass
+    Class == 3 ~ "Grass", #Grass
+    Class == 8 ~ "Shadow"
   ),
   height = round(height, digits = 2))
+
 
 trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
 
@@ -145,7 +148,7 @@ prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predic
 
 varImp(caret_fit_base, scale = FALSE)
 
-##saveRDS(caret_fit_base, "model_runs/UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new/training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds")
+saveRDS(caret_fit_base, "model_runs/training_polygons12N_09152020_ADD_SHADOW/training_polygons12N_09152020_ADD_SHADOW.rds")
 
 
 ```
@@ -224,6 +227,7 @@ parLapply(cl, tiles, predict_raster2,
           height_raster_folder="DATA/NOC_heights/WestSM_dZgridded" ,
           model_name="shadow_model_and_MSAVI_V2", 
           output_folder="model_runs/add_shadow_no_normalize_MSAVI_V2")
+
 Sys.time()-start_time
 
 stopCluster(cl)
