@@ -66,8 +66,20 @@ height_merge<-function(imagery_path, height_raster_object){
     stack(height_raster_object)
 }
 
-height_merge2<-function(imagery_path, height_raster_object){
-  raster<-scale(brick(imagery_path), center = FALSE)
+height_merge2<-function(imagery_path, height_raster_object, norm=FALSE, indeces=TRUE){
+  raster<-brick(imagery_path)
+  if(norm==TRUE){
+    raster<-scale(raster, center = FALSE)
+  }
+  
+  if(indeces==TRUE){
+    red_index<-subset(names(raster), grepl("1$", names(raster)))
+    nir_index<-subset(names(raster), grepl("4$", names(raster)))
+    raster<-raster%>%
+      stack(
+        RStoolbox::spectralIndices(raster, red=red_index, nir=nir_index, index="MSAVI2")
+      )
+  }
   
   
   if(crs(raster, asText = TRUE) != ifelse(
@@ -89,6 +101,8 @@ height_merge2<-function(imagery_path, height_raster_object){
   final_raster<-raster%>%
     crop(height_raster_object, datatype = dataType(.))%>%
     stack(height_raster_object)
+  
+  return(final_raster)
 }
 # 
 # imagery_path<-"DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif"

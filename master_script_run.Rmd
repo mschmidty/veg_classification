@@ -153,25 +153,80 @@ varImp(caret_fit_base, scale = FALSE)
 ## Make prediction with model
 ```{r}
 source("R/load_funcs.R")
+library(here)
+library(snow)
 gc()
 rasterOptions(
   maxmemory = 5e+10,
   chunksize = 1e+09
 )
-tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif", full.names = T)%>%
-  sample(10)
+tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T)
 
 
-always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
-
-tiles<-append(tiles, always_runs)
-
-tiles2<-tiles[3:13]
+# tiles<-tiles[-2]
+# 
+# 
+# always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
+# 
+# tiles<-append(tiles, always_runs)
+# 
+# tiles2<-tiles[3:13]
 
 start_time<-Sys.time()
-predict_raster(tiles2, UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new
-               "model_runs//training_polygons12N_03172020_UPDATE_OTHER_VEG_normalized_scale_more_data_03282020_new.rds", 
+predict_raster(tiles, 
+               "model_runs/add_shadow_no_normalize_MSAVI/training_polygons12N_09152020_ADD_SHADOW.rds", 
                "DATA/NOC_heights/WestSM_dZgridded")
 Sys.time()-start_time
 ```
 
+## Parallel predict
+```{r}
+library(parallel)
+library(here)
+source("R/load_funcs.R")
+
+
+tiles<-tibble(
+  tile_path=list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T),
+  tile_name=list.files("DATA/Tiffs_W_SM", pattern = ".tif$")
+)
+
+##tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T)
+
+complete_tiles<-tibble(tile_name=list.files("model_runs/add_shadow_no_normalize_MSAVI", pattern = ".tif$"))%>%
+  mutate(tile_name=str_extract(tile_name, "(?<=TILE_).*$"))
+
+tiles<-tiles%>%
+  anti_join(complete_tiles)%>%
+  pull(tile_path)
+
+shadow_model<-readRDS("model_runs/add_shadow_no_normalize_MSAVI_V2/training_polygons12N_09152020_ADD_SHADOW.rds")
+
+cl<-makeCluster(15)
+clusterExport(cl, varlist=c("shadow_model", "lfn_2", "height_merge2"), envir=environment())
+clusterEvalQ(cl, 
+             list(library(tidyverse), 
+                  library(raster), 
+                  library(RStoolbox), 
+                  library(here),
+                  rasterOptions(
+                    tmpdir = here("temp_rasters"),
+                    maxmemory = 5e+10,
+                    chunksize = 1e+09
+                  )
+             )
+)
+
+
+start_time<-Sys.time()
+parLapply(cl, tiles, predict_raster2, 
+          model = shadow_model, 
+          height_raster_folder="DATA/NOC_heights/WestSM_dZgridded" ,
+          model_name="shadow_model_and_MSAVI_V2", 
+          output_folder="model_runs/add_shadow_no_normalize_MSAVI_V2")
+Sys.time()-start_time
+
+stopCluster(cl)
+```
+
+tile_path, model, height_raster_folder, model_name, output_folder = NULL

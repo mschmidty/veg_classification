@@ -16,12 +16,11 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
       raster()
     
     raster_to_predict<-height_merge2(vector_of_file_paths[i], height_raster)
-    names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height")
+    names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "MSAVI", "height")
     
-    beginCluster(4)
     
-    prediction<-clusterR(raster_to_predict, predict, args = list(model))
-    endCluster()
+    
+    prediction<-predict(raster_to_predict, model)
     
     output_path<-dirname(model_path)
     
@@ -45,6 +44,41 @@ predict_raster<-function(vector_of_file_paths, model_path, height_raster_folder,
   }
 }
 
+
+predict_raster2<-function(tile_path, model, height_raster_folder, model_name, output_folder = NULL){
+  print(paste0("Starting ", tile_path, ".", "TIME: ", Sys.time()))
+  
+  
+  
+  
+  height_raster<-lfn_2(tile_path, height_raster_folder)%>%
+    raster()
+  
+  raster_to_predict<-height_merge2(tile_path, height_raster)
+  names(raster_to_predict)<-c("band1", "band2", "band3", "band4", "height", "MSAVI2")
+  
+  
+  
+  prediction<-predict(raster_to_predict, model)
+  
+  
+  if(!is.null(output_folder)){
+    output_path = output_folder
+  }
+  
+  output_path<-paste0(output_path,
+                      "/MODEL_",
+                      model_name, 
+                      "_TILE_",
+                      sub(pattern = "(.*)\\..*$", replacement = "\\1", basename(tile_path)),
+                      ".tif"
+  )
+  
+  
+  writeRaster(prediction, output_path)
+  
+  print(paste0("Tile ", tile_path, " finished @: ", Sys.time()))
+}
 
 
 

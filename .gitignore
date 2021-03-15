@@ -7,6 +7,7 @@ model_runs/old_models/
 output/
 .Rproj.user/
 model_runs/
+temp_rasters/
 
 
 # File Types
