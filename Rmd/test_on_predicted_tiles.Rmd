@@ -247,3 +247,152 @@ gdalbuildvrt(gdalfile="model_runs/Shadow_Class_MSAVI_No_Scale_V2/*.tif",
 ```
 
 
+
+## merge and parallelizing a aggregate. 
+```{r}
+library(terra)
+library(SpaDES)
+tiles<-c("SM_GypsumGapNW_0102_180611.tif", "SM_GypsumGapNW_0103_180611.tif", "SM_GypsumGapNW_0104_180611.tif", "SM_GypsumGapNW_0202_180611.tif", "SM_GypsumGapNW_0203_180611.tif", "SM_GypsumGapNW_0204_180611.tif", "SM_NaturitaNWSW_0402_180611.tif", "SM_NaturitaNWSW_0403_180611.tif", "SM_NaturitaNWSW_0404_180611.tif")
+
+read_raster<-function(x){
+  r<-rast(paste0("model_runs/Shadow_Class_MSAVI_No_Scale_V2/MODEL_shadow_model_and_MSAVI_V2_TILE_", x))
+  return(r)
+}
+
+raster_list<-lapply(tiles, read_raster)
+raster_list[[9]]
+
+raster_list$filename<-"model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/merge_test.tif"
+
+do.call(merge, raster_list)
+
+
+test<-raster::raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/merge_test.tif")
+
+raster::blockSize(test)
+
+test_split<-splitRaster(test, nx=5, ny=5)
+
+aggregate_single<-function(x,rclmat,fact, output_folder=FALSE){
+
+  reclassified_raster<-reclassify(x, rclmat)
+  
+  if(output_folder==FALSE){
+    aggregate_raster<-aggregate(reclassified_raster, fact=fact, fun=sum, na.rm=T)
+    return(aggregate_raster)
+  }else{
+    aggregate(reclassified_raster, fact=fact, fun=sum, na.rm=T, filename=paste0(output_folder, "/5m_", basename(x@file@name)))
+  }
+}
+
+
+m<-c(1,0, 2,0, 3,0, 4,0, 5,1, 6,0)
+matrix_stuff<-matrix(m, ncol=2, byrow=T)
+
+library(parallel)
+library(doParallel)
+n_cores<-detectCores(logical=TRUE)-2
+
+cl<-makeCluster(n_cores)
+registerDoParallel(cl)
+
+clusterEvalQ(cl, library(raster))
+clusterExport(cl, list('aggregate_single'))
+
+parLapply(cl, 
+          test_split, 
+          fun=aggregate_single, 
+          rclmat=matrix_stuff, 
+          fact=50,
+          output_folder="model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate2")
+
+stopCluster(cl)
+
+str(test_split[[1]])
+
+
+basename(test_split[[1]]@file@name)
+
+list_files_5m<-list.files("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate2", full.names=T, pattern=".grd$")
+
+files<-lapply(list_files_5m, raster::raster)
+
+files$filename<-"model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/merge_test4.tif"
+files$tolerance<-1
+
+do.call(raster::merge, files)
+
+
+```
+
+
+
+```{r}
+library(raster)
+
+tiles<-c("SM_GypsumGapNW_0102_180611.tif", "SM_GypsumGapNW_0103_180611.tif", "SM_GypsumGapNW_0104_180611.tif", "SM_GypsumGapNW_0202_180611.tif", "SM_GypsumGapNW_0203_180611.tif", "SM_GypsumGapNW_0204_180611.tif", "SM_NaturitaNWSW_0402_180611.tif", "SM_NaturitaNWSW_0403_180611.tif", "SM_NaturitaNWSW_0404_180611.tif")
+
+read_raster<-function(x){
+  r<-raster(paste0("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/5m_MODEL_shadow_model_and_MSAVI_V2_TILE_", x))
+  return(r)
+}
+
+r<-lapply(tiles, read_raster)
+r$tolerance<-0.5
+
+
+
+t<-do.call(merge, r)
+
+plot(t)
+```
+
+```{r}
+library(raster)
+
+files<-list.files("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/", full.names=T, pattern=".tif$")
+
+files<-files[-177]
+files<-files[-116]
+
+r<-lapply(files, raster)
+
+r$tolerance<-1
+
+
+
+t<-do.call(merge, r)
+
+plot(t)
+
+writeRaster(t3, "model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/merged/sage_merge_final.tif")
+
+r2<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/5m_MODEL_shadow_model_and_MSAVI_V2_TILE_SM_GypsumGapNW_0101_180611.tif" )
+
+r2_reproj<-projectRaster(from=r2, to=t, alignOnly=T)
+
+r3<-raster("model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/5m_MODEL_shadow_model_and_MSAVI_V2_TILE_SM_NaturitaNWSW_0302_180611.tif")
+
+r3_reproj<-projectRaster(from=r3, to=t)
+
+t2<-merge(t, r2_reproj, tolerance=0.5)
+
+t3<-merge(t2, r3_reproj, tolerance=0.5)
+```
+
+
+## Moving Window
+```{r}
+moving_window_45m<-focal(t3, w=matrix(1/(2500*(9^2)), nrow=9, ncol=9))
+
+writeRaster(moving_window_45m,"model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/merged/moving_window_45m_window.tif")
+
+moving_window_95m<-focal(t3, w=matrix(1/(2500*(19^2)), nrow=19, ncol=19))
+
+writeRaster(moving_window_95m,"model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/merged/moving_window_95m_window.tif")
+
+moving_window_195m<-focal(t3, w=matrix(1/(2500*(39^2)), nrow=39, ncol=39))
+
+writeRaster(moving_window_195m,"model_runs/Shadow_Class_MSAVI_No_Scale_V2/products/sage_aggregate/merged/moving_window_195m_window.tif")
+```
+
