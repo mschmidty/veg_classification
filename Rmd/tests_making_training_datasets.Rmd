@@ -1,0 +1,426 @@
+---
+title: "Making Training and Testing Dataset"
+author: "Michael Schmidt"
+date: "1/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(raster)
+library(tidyverse)
+library(sf)
+```
+
+# Get list of training files
+Made this into function in `R/make_training_testing_data.R` called `model_tiles()`.
+```{r}
+tiles<-st_read("shapefiles/SanMiguel_West.shp")%>%
+  select(NAME, Acres)
+train_polys<-st_read("shapefiles/training_polygons12N_12102018.shp")
+
+st_join(train_polys, tiles)%>%
+  as_tibble()%>%
+  distinct(NAME)%>%
+  pull(NAME)
+```
+
+
+Testing `model_tiles()`
+```{r}
+tiles<-model_tiles("shapefiles/SanMiguel_West.shp", "shapefiles/training_polygons12N_12102018.shp")
+
+as.character(tiles)
+```
+
+Works. 
+
+# Read Tile and output extracted data. 
+```{r}
+
+path<-list.files("DATA/SanMiguel_West_heights_added", pattern = tiles[1], full.names = T)
+
+raster<-brick(path)
+names(raster)<-c("band1", "band2", "band3", "band4", "height")
+
+train_polys<-st_read("shapefiles/training_polygons12N_12102018.shp")%>%
+  mutate(Id = rownames(.))%>%
+  st_crop(extent(raster))%>%
+  mutate(Class = case_when(
+    Class == "BG_Rock" ~ 1,
+    Class == "Black_Sage" ~ 2, 
+    Class == "Grass" ~ 3, 
+    Class == "Other_Shrub" ~ 4,
+    Class == "Other_Veg" ~ 5, 
+    Class == "PJ" ~ 6, 
+    Class == "Sage" ~ 7
+  ))
+
+
+train_polys_class_raster<-rasterize(train_polys, raster, field = "Class")
+train_polys_id_raster<-rasterize(train_polys, raster, file = "Id")
+
+comb<-stack(raster, train_polys_class_raster)%>%
+  stack(train_polys_id_raster)
+
+names(comb)<-c("band1", "band2", "band3", "band4", "height", "class", "poly_id")
+
+dissolve_shape<-st_union(train_polys)
+
+test<-raster::extract(comb, as_Spatial(dissolve_shape))
+
+test[[1]]%>%
+  as_tibble()
+
+```
+
+Testing the function created from above scripts. 
+```{r}
+source("R/make_training_testing_data.R")
+
+tiles<-model_tiles("shapefiles/SanMiguel_West.shp", "shapefiles/training_polygons12N_12102018.shp")
+
+train_data2<-sapply(tiles[4:6], train_data, "DATA/SanMiguel_West_heights_added", "shapefiles/training_polygons12N_12102018.shp", simplify = T)
+bind_rows(train_data2)
+
+test<-single_train_data(tiles[4], "DATA/SanMiguel_West_heights_added", "shapefiles/training_polygons12N_12102018.shp")
+
+length(train_data)
+
+do.call(rbind, train_data2)%>%
+  as_tibble()%>%
+  count(poly_id)
+
+?lapply()
+```
+
+
+# Make the Training Dataset. 
+```{r}
+source("R/load_funcs.R")
+test<-train_data_all(
+  training_poly_path = "shapefiles/training_polygons12N_12102018.shp", 
+  tile_shape_path = "shapefiles/SanMiguel_West.shp", 
+  height_imagery_folder = "DATA/SanMiguel_West_heights_added"
+)
+saveRDS(test, "DATA/training_data/training_data.rds")
+```
+
+```{r}
+tiles<-model_tiles( tile_shape_path = "shapefiles/SanMiguel_West.shp",training_poly_path = "shapefiles/training_polygons12N_12102018.shp")
+
+path_to_raster<-list.files("DATA/SanMiguel_West_heights_added", pattern = tiles[1], full.names = T)
+
+height_raster<-brick(path_to_raster)
+
+train_polys<-st_read("shapefiles/training_polygons12N_12102018.shp")%>%
+    mutate(Id = as.numeric(rownames(.)))%>%
+    st_crop(extent(height_raster))%>%
+    mutate(Class = case_when(
+      Class == "BG_Rock" ~ 1,
+      Class == "Black_Sage" ~ 2, 
+      Class %in% c("Grass", "Blue_Grama") ~ 3, 
+      Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat") ~ 4,
+      Class == "Other_Veg" ~ 5, 
+      Class == "PJ" ~ 6, 
+      Class == "Sage" ~ 7
+    ))
+
+train_polys_class_raster<-rasterize(train_polys, height_raster, field = "Class") 
+train_polys_id_raster<-rasterize(train_polys, height_raster, field = "Id")
+  
+comb<-stack(height_raster, train_polys_class_raster)%>%
+    stack(train_polys_id_raster)
+  
+names(comb)<-c("band1", "band2", "band3", "band4", "height", "class", "poly_id")
+  
+dissolve_shape<-st_union(train_polys)
+  
+final_test<-raster::extract(comb, as_Spatial(dissolve_shape))
+
+```
+
+
+
+```{r}
+train_data<-function(imagery_name, height_imagery_folder, training_poly_path){
+  
+  path_to_raster<-list.files(height_imagery_folder, pattern = imagery_name, full.names = T)
+  height_raster<-brick(path_to_raster)
+  
+  train_polys<-st_read(training_poly_path)%>%
+    mutate(Id = as.numeric(rownames(.)))%>%
+    st_crop(extent(height_raster))%>%
+    mutate(Class = case_when(
+      Class == "BG_Rock" ~ 1,
+      Class == "Black_Sage" ~ 2, 
+      Class == "Grass" ~ 3, 
+      Class == "Other_Shrub" ~ 4,
+      Class == "Other_Veg" ~ 5, 
+      Class == "PJ" ~ 6, 
+      Class == "Sage" ~ 7
+    ))
+  
+  train_polys_class_raster<-rasterize(train_polys, height_raster, field = "Class") 
+  train_polys_id_raster<-rasterize(train_polys, height_raster, field = "Id")
+  
+  train_polys_test<-rasterize(train_polys, height_raster, field = c("Class", "Id"))
+  
+  comb<-stack(height_raster, train_polys_class_raster)%>%
+    stack(train_polys_id_raster)
+  
+  names(comb)<-c("band1", "band2", "band3", "band4", "height", "class", "poly_id")
+  
+  dissolve_shape<-st_union(train_polys)
+  
+  raster::extract(comb, as_Spatial(dissolve_shape))
+  
+}
+```
+
+
+## Looking at normalized training dataset to make sure everything is copesthetic. 
+```{r}
+library(tidyverse)
+
+data<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE2_normalized.rds")
+
+data2<-readRDS("DATA/training_data/training_polygons12N_02122020_BS_UPDATE3.rds")
+```
+
+```{r}
+data_cl<-data%>%
+  select(-Id, -height)%>%
+  pivot_longer(
+    -Class,
+    names_to = "band_num", 
+    values_to = "value"
+    )
+
+data_cl%>%
+  ggplot(aes(value, color = band_num))+
+   geom_density()+
+    theme_light()
+
+data_cl%>%
+  filter(!is.na(Class))%>%
+  ggplot(aes(as.factor(Class), value))+
+  geom_boxplot(aes(color = as.factor(Class)))
+```
+
+## Rasterize training dataset to count tiles. 
+```{r}
+
+library(raster)
+library(sf)
+library(tidyverse)
+
+list_of_tiles<-model_tiles("shapefiles/SanMiguel_West.shp", "shapefiles/training_polygons12N_03022021_refine_classes.shp")
+
+list_of_tiles<-list_of_tiles[!is.na(list_of_tiles)]
+
+training_shp<-st_read("shapefiles/training_polygons12N_03022021_refine_classes.shp")
+
+r<-raster(paste0("DATA/SanMiguel_West/Tiffs/",list_of_tiles[[20]]))[[1]]
+
+crop_shp<-training_shp%>%
+  mutate(Id = as.numeric(rownames(.)))%>%
+  st_crop(extent(r))%>%
+  mutate(Class = case_when(
+      Class == "BG_Rock" ~ 1,
+      Class == "Black_Sage" ~ 2, 
+      Class %in% c("Grass", "Blue_Grama") ~ 3, 
+      Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush") ~ 4,
+      Class == "Other_Veg" ~ 5, 
+      Class == "PJ" ~ 6, 
+      Class %in% c("Sage", "Wyoming_Big_Sage", "Big_Sage", "Basin_Big_Sage") ~ 7,
+      Class == "Shadow" ~ 8
+    ))
+
+training_raster<-raster::rasterize(crop_shp, r, field="Class", silent=TRUE)
+id_raster<-raster::rasterize(crop_shp, r, field="Id", silent=TRUE)
+
+r2<-stack(training_raster, id_raster)
+
+raster_df<-r2%>%
+  as.data.frame()%>%
+  drop_na()
+
+tableize<-function(tile_path, training_shp){
+  r<-raster(paste0("DATA/SanMiguel_West/Tiffs/",tile_path))[[1]]
+
+  crop_shp<-training_shp%>%
+    mutate(Id = as.numeric(rownames(.)))%>%
+    st_crop(extent(r))%>%
+    mutate(Class = case_when(
+        Class == "BG_Rock" ~ 1,
+        Class == "Black_Sage" ~ 2, 
+        Class %in% c("Grass", "Blue_Grama") ~ 3, 
+        Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush", "Other_Veg", "Rabbitbrush", "Oak") ~ 4,
+        Class == "PJ" ~ 5, 
+        Class %in% c("Sage", "Wyoming_Big_Sage", "Big_Sage", "Basin_Big_Sage") ~ 6,
+        Class == "Shadow" ~ 7
+      ))
+  
+  training_raster<-raster::rasterize(crop_shp, r, field="Class", silent=TRUE)
+  id_raster<-raster::rasterize(crop_shp, r, field="Id", silent=TRUE)
+  
+  r2<-stack(training_raster, id_raster)
+  
+  raster_df<-r2%>%
+    as.data.frame()%>%
+    drop_na()%>%
+    as_tibble()
+  
+  return(raster_df)
+}
+
+library(parallel)
+library(doParallel)
+n_cores<-detectCores(logical=TRUE)-2
+
+cl<-makeCluster(n_cores)
+registerDoParallel(cl)
+
+clusterEvalQ(cl, list(library(raster), library(tidyverse), library(sf)))
+clusterExport(cl, list('tableize'))
+
+time_start<-Sys.time()
+list_of_tables<-parLapply(cl, 
+          list_of_tiles, 
+          fun=tableize,
+          training_shp=training_shp
+          )
+Sys.time()-time_start
+
+stopCluster(cl)
+
+
+final_table<-bind_rows(list_of_tables)%>%
+  rename(Class=1, Id=2)
+
+final_table%>%
+  count(Class)
+```
+
+Add nates Data
+```{r}
+library(sf)
+library(tidyverse)
+
+nate_data<-st_read("shapefiles/nate_training.shp")
+
+training_shp<-st_read("shapefiles/training_polygons12N_03022021_refine_classes.shp")
+
+  
+
+nate_data_clean<-nate_data%>%
+  rename(Class=Name)%>%
+  select(Class)%>%
+  mutate(Class=case_when(
+    Class=="Black Sage"~"Black_Sage",
+    TRUE~Class
+  ))%>%
+  st_transform(st_crs(training_shp))%>%
+  st_zm()
+
+training_shp%>%
+  select(Class)%>%
+  rbind(nate_data_clean)%>%
+  st_write("shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp")
+```
+
+
+## Parallel make training data
+```{r}
+lapply(list.files("R", full.names=T), source, silent = T)
+
+library(parallel)
+library(doParallel)
+
+list_of_tiles<-model_tiles("shapefiles/SanMiguel_West.shp", "shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp")
+
+list_of_tiles<-list_of_tiles[!is.na(list_of_tiles)]
+
+n_cores<-detectCores(logical=TRUE)-2
+
+cl<-makeCluster(n_cores)
+registerDoParallel(cl)
+
+clusterEvalQ(cl, list(library(raster), library(tidyverse), library(sf)))
+clusterExport(cl, list('train_data2', 'lfn_2', 'height_merge2'))
+
+start_time<-Sys.time()
+train_data<-parLapply(cl, 
+                      list_of_tiles, 
+                      train_data2, 
+                      "DATA/SanMiguel_West/Tiffs",
+                      height_raster_folder = "DATA/SanMiguel_West_heights_added",
+                      training_poly_path="shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp" )
+Sys.time()-start_time
+
+stopCluster(cl)
+```
+
+
+
+```{r}
+source("R/make_training_testing_data.R")
+
+file_path<-"DATA/SanMiguel_West/Tiffs"
+
+library(raster)
+library(sf)
+library(tidyverse)
+
+list_of_tiles<-model_tiles("shapefiles/SanMiguel_West.shp", "shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp")
+
+list_of_tiles<-list_of_tiles[!is.na(list_of_tiles)]
+
+tile<-brick(paste(file_path, list_of_tiles[1], sep="/"), proxy=F)
+training_poly<-st_read("shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp")
+
+crop_training_poly<-training_poly%>%
+    mutate(Id = as.numeric(rownames(.)))%>%
+    st_crop(tile)%>%
+    mutate(Class = case_when(
+        Class == "BG_Rock" ~ 1,
+        Class == "Black_Sage" ~ 2, 
+        Class %in% c("Grass", "Blue_Grama") ~ 3, 
+        Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush", "Other_Veg", "Rabbitbrush", "Oak") ~ 4,
+        Class == "PJ" ~ 5, 
+        Class %in% c("Sage", "Wyoming_Big_Sage", "Big_Sage", "Basin_Big_Sage") ~ 6,
+        Class == "Shadow" ~ 7
+      ))
+
+start_time<-Sys.time()
+class_rast<-rasterize(crop_training_poly, tile[[1]], field="Class", silent=T)
+id_rast<-rasterize(crop_training_poly, tile[[1]], field="Id", silent=T)
+
+new_rast<-stack(tile, class_rast)%>%
+  stack(id_rast)%>%
+  raster::extract(crop_training_poly["Class"], df=T)%>%
+  as_tibble()
+
+new_rast%>%
+  select(-ID)%>%
+  rename(band1=1, band2=2, band3=3, band4=4, Class=5, Id=6)%>%
+  saveRDS("")
+Sys.time()-start_time
+
+start_time<-Sys.time()
+extracted_values<-raster::extract(tile,crop_training_poly["Class"], df=T)%>%
+  as_tibble()
+
+Sys.time()-start_time
+
+
+  
+
+```
+
+
+
