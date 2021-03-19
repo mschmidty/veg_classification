@@ -79,11 +79,10 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
       Class == "BG_Rock" ~ 1,
       Class == "Black_Sage" ~ 2, 
       Class %in% c("Grass", "Blue_Grama") ~ 3, 
-      Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush") ~ 4,
-      Class == "Other_Veg" ~ 5, 
-      Class == "PJ" ~ 6, 
-      Class == "Sage" ~ 7,
-      Class == "Shadow" ~ 8
+      Class %in% c("Other_Shrub", "Rock_Goldenrod", "Winterfat", "Greasewood", "Fourwing Saltbush", "Other_Veg", "Rabbitbrush", "Oak") ~ 4,
+      Class == "PJ" ~ 5, 
+      Class %in% c("Sage", "Wyoming_Big_Sage", "Big_Sage", "Basin_Big_Sage") ~ 6,
+      Class == "Shadow" ~ 7
     ))
   
   train_polys_class_raster<-raster::rasterize(train_polys, height_tile_merge[[1]], field = "Class", silent = T) 
@@ -107,7 +106,9 @@ train_data2<-function(imagery_name, imagery_folder, height_raster_folder, traini
   
   print("dissolve complete")
   
-  raster::extract(comb, as_Spatial(dissolve_shape))[[1]]
+  final_table<-raster::extract(comb, as_Spatial(dissolve_shape))[[1]]
+  
+  return(as_tibble(final_table))
 }
 
 train_data3<-function(imagery_name, imagery_folder, height_raster_folder, training_poly_path){
@@ -214,3 +215,5 @@ train_data_all_add_heights<-function(
   # do.call(rbind, final_data_list)%>%
   #   as_tibble()
 }
+
+
