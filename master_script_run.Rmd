@@ -86,17 +86,8 @@ gc()
 set.seed(1234)
 options(scipen=999)
 
-data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
-  drop_na()%>%
-  mutate(Class = case_when(
-    Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
-    Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
-    Class == 6 ~ "PJ", # PJ
-    Class == 1 ~ "BG_rock", # BG_rock
-    Class == 3 ~ "Grass", #Grass
-    Class == 8 ~ "Shadow"
-  ),
-  height = round(height, digits = 2))
+data<-readRDS("DATA/training_data/refined_traindata_03192021.rds")%>%
+  drop_na()
 
 
 trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
@@ -119,8 +110,8 @@ control <- trainControl(method = "cv",
 mtry<-c(2:4)
 tunegrid <-expand.grid(.mtry = mtry)
 
-no_cores<-4
-cl<-makePSOCKcluster(no_cores)
+
+cl<-makePSOCKcluster(20)
 registerDoParallel(cl)
 
 start_time<-Sys.time()
@@ -148,7 +139,7 @@ prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predic
 
 varImp(caret_fit_base, scale = FALSE)
 
-saveRDS(caret_fit_base, "model_runs/training_polygons12N_09152020_ADD_SHADOW/training_polygons12N_09152020_ADD_SHADOW.rds")
+saveRDS(caret_fit_base, "model_runs/refined_traindata_03192021_no_height/model_03192021.rds")
 
 
 ```
