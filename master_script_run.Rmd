@@ -86,17 +86,8 @@ gc()
 set.seed(1234)
 options(scipen=999)
 
-data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
-  drop_na()%>%
-  mutate(Class = case_when(
-    Class %in% c(7,2) ~ "Sage", #Sage and Black Sage 
-    Class %in% c(4,5) ~ "Other_veg", #Other_veg and other_shrub,
-    Class == 6 ~ "PJ", # PJ
-    Class == 1 ~ "BG_rock", # BG_rock
-    Class == 3 ~ "Grass", #Grass
-    Class == 8 ~ "Shadow"
-  ),
-  height = round(height, digits = 2))
+data<-readRDS("DATA/training_data/refined_traindata_03192021.rds")%>%
+  drop_na()
 
 
 trainIndex<-createDataPartition(data$Class, p = .8, list = FALSE, times = 1)
@@ -119,8 +110,8 @@ control <- trainControl(method = "cv",
 mtry<-c(2:4)
 tunegrid <-expand.grid(.mtry = mtry)
 
-no_cores<-4
-cl<-makePSOCKcluster(no_cores)
+
+cl<-makePSOCKcluster(20)
 registerDoParallel(cl)
 
 start_time<-Sys.time()
@@ -148,7 +139,7 @@ prop.table(caret::confusionMatrix(as.factor(prediction$Class), prediction$predic
 
 varImp(caret_fit_base, scale = FALSE)
 
-saveRDS(caret_fit_base, "model_runs/training_polygons12N_09152020_ADD_SHADOW/training_polygons12N_09152020_ADD_SHADOW.rds")
+saveRDS(caret_fit_base, "model_runs/refined_traindata_03192021_no_height/model_03192021.rds")
 
 
 ```
@@ -156,25 +147,81 @@ saveRDS(caret_fit_base, "model_runs/training_polygons12N_09152020_ADD_SHADOW/tra
 ## Make prediction with model
 ```{r}
 source("R/load_funcs.R")
+library(here)
+library(snow)
 gc()
 rasterOptions(
   maxmemory = 5e+10,
   chunksize = 1e+09
 )
-tiles<-list.files("DATA/SanMiguel_West/Tiffs", pattern = ".tif", full.names = T)%>%
-  sample(10)
+tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T)
 
 
-always_runs<-c("DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0102_180611.tif", "DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0103_180611.tif" , "DATA/SanMiguel_West/Tiffs/SM_GypsumGapNW_0104_180611.tif")
-
-tiles<-append(always_runs, tiles)
-
-##tiles2<-tiles[3:13]
+# tiles<-tiles[-2]
+# 
+# 
+# always_runs<-c("DATA/Tiffs_W_SM/SM_GypsumGapNW_0102_180611.tif", "DATA/Tiffs_W_SM/SM_GypsumGapNW_0103_180611.tif" , "DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif")
+# 
+# tiles<-append(tiles, always_runs)
+# 
+# tiles2<-tiles[3:13]
 
 start_time<-Sys.time()
-predict_raster(always_runs, 
-               "model_runs/fall_2020_v1/training_polygons12N_03172020_UPDATE_OTHER_VEG_scale_NONE_data_03282020_new_new.rds", 
+predict_raster(tiles, 
+               "model_runs/add_shadow_no_normalize_MSAVI/training_polygons12N_09152020_ADD_SHADOW.rds", 
                "DATA/NOC_heights/WestSM_dZgridded")
 Sys.time()-start_time
 ```
 
+## Parallel predict
+```{r}
+library(parallel)
+library(here)
+source("R/load_funcs.R")
+
+
+tiles<-tibble(
+  tile_path=list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T),
+  tile_name=list.files("DATA/Tiffs_W_SM", pattern = ".tif$")
+)
+
+##tiles<-list.files("DATA/Tiffs_W_SM", pattern = ".tif$", full.names = T)
+
+complete_tiles<-tibble(tile_name=list.files("model_runs/add_shadow_no_normalize_MSAVI", pattern = ".tif$"))%>%
+  mutate(tile_name=str_extract(tile_name, "(?<=TILE_).*$"))
+
+tiles<-tiles%>%
+  anti_join(complete_tiles)%>%
+  pull(tile_path)
+
+shadow_model<-readRDS("model_runs/add_shadow_no_normalize_MSAVI_V2/training_polygons12N_09152020_ADD_SHADOW.rds")
+
+cl<-makeCluster(15)
+clusterExport(cl, varlist=c("shadow_model", "lfn_2", "height_merge2"), envir=environment())
+clusterEvalQ(cl, 
+             list(library(tidyverse), 
+                  library(raster), 
+                  library(RStoolbox), 
+                  library(here),
+                  rasterOptions(
+                    tmpdir = here("temp_rasters"),
+                    maxmemory = 5e+10,
+                    chunksize = 1e+09
+                  )
+             )
+)
+
+
+start_time<-Sys.time()
+parLapply(cl, tiles, predict_raster2, 
+          model = shadow_model, 
+          height_raster_folder="DATA/NOC_heights/WestSM_dZgridded" ,
+          model_name="shadow_model_and_MSAVI_V2", 
+          output_folder="model_runs/add_shadow_no_normalize_MSAVI_V2")
+
+Sys.time()-start_time
+
+stopCluster(cl)
+```
+
+tile_path, model, height_raster_folder, model_name, output_folder = NULL

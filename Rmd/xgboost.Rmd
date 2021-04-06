@@ -1,0 +1,250 @@
+---
+title: "Run XGboost"
+author: "Michael Schmidt"
+date: "11/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+```
+
+## Load the data
+```{r}
+data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
+  drop_na()%>%
+  mutate(class = case_when(
+    Class %in% c(7,2) ~ 7, #Sage and Black Sage 
+    Class %in% c(4,5) ~ 5, #Other_veg and other_shrub,
+    Class == 6 ~ 6, # PJ
+    Class == 1 ~ 1, # BG_rock
+    Class == 3 ~ 3, #Grass
+    Class == 8 ~ 8 # Shadow
+  ))%>%
+  dplyr::select(-Class)%>%
+  mutate(class=as.factor(class))
+```
+
+## Split data into training and testing
+```{r}
+set.seed(123)
+split<-initial_split(data, strata=class)
+train<-training(split)
+test<-testing(split)
+```
+
+## Build the Model and Tuning perameters
+```{r}
+xgb_spec<-boost_tree(
+  trees = 1500,
+  tree_depth = tune(),
+  min_n = tune(),
+  loss_reduction = tune(),
+  sample_size=tune(),
+  mtry=tune(),
+  learn_rate=tune()
+)%>%
+  set_engine("xgboost")%>%
+  set_mode("classification")
+
+xgb_grid <- grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), train%>%select(-Id)),
+  learn_rate(),
+  size = 30
+)
+```
+## Make workflow
+```{r}
+xgb_wf<-workflow()%>%
+  add_formula(class~band1+band2+band3+band4+MSAVI2+height)%>%
+  add_model(xgb_spec)
+```
+
+## Create folds
+```{r}
+folds<-vfold_cv(train, strata=Id)
+```
+
+## Tune the Model
+```{r}
+library(doParallel)
+
+no_cores<-detectCores(logical = TRUE)-8
+cl<-makeCluster(no_cores, type = "SOCK")
+registerDoParallel(cl)
+
+
+set.seed(345)
+start_time <- Sys.time()
+xgb_res<-tune_grid(
+  xgb_wf,
+  resamples=folds,
+  grid=xgb_grid,
+  control=control_grid(save_pred=TRUE),
+  metrics=metric_set(accuracy, roc_auc)
+)
+end_time<-Sys.time()
+
+end_time-start_time
+
+stopCluster(cl)
+rm(cl)
+
+saveRDS(xgb_res,"model_runs/xgboost_tidy/xgb_res.rds")
+```
+
+```{r}
+collect_metrics(xgb_res)%>%
+  filter(.metric=="accuracy")%>%
+  View()
+
+xgb_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  select(mean, mtry:sample_size) %>%
+  pivot_longer(mtry:sample_size,
+               values_to = "value",
+               names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "AUC")
+  
+```
+
+## Find Best model
+```{r}
+show_best(xgb_res, "roc_auc")
+```
+
+## Select the best Model
+```{r}
+best_ac<-select_best(xgb_res, "accuracy")
+
+best_ac
+```
+
+## Finalize workflow
+```{r}
+final_xgb<-finalize_workflow(
+  xgb_wf,
+  best_ac
+)
+
+
+saveRDS(final_xgb, "model_runs/xgboost_tidy/final_model.rds")
+
+```
+
+```{r}
+library(vip)
+
+varImp<-final_xgb%>%
+  fit(data=train)%>%
+  pull_workflow_fit()%>%
+  vip(geom="point")
+
+saveRDS(varImp, 'model_runs/xgboost_tidy/varImp.rds')
+```
+
+```{r}
+
+cl<-makeCluster(10, type = "SOCK")
+registerDoParallel(cl)
+final_res<-last_fit(final_xgb, split)
+
+final_res
+
+collect_metrics(final_res)
+
+final_res %>%
+  collect_predictions() %>%
+  conf_mat(class,.pred_class)
+
+ 
+```
+
+## Final Fit
+```{r}
+final_xgb<-readRDS("model_runs/xgboost_tidy/final_model.rds")
+
+final_model<-final_xgb%>%
+  last_fit(split)
+
+last_model<-final_model$.workflow[[1]]
+
+saveRDS(final_model, "model_runs/xgboost_tidy/final_model_for_real.rds")
+```
+
+Make a prediction
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(raster)
+library(RStoolbox)
+library(xgboost)
+lapply(list.files("R", full.names=T), source)
+height_data<-brick("DATA/NOC_heights/WestSM_dZgridded/SM_GypsumGapNW_0104_180611_dz.tif")
+
+tile_to_predict<-height_merge2("DATA/Tiffs_W_SM/SM_GypsumGapNW_0104_180611.tif", height_data)
+
+names(tile_to_predict)<-c("band1", "band2", "band3", "band4", "MSAVI", "height")
+
+final_model<-readRDS("model_runs/xgboost_tidy/final_model_for_real.rds")
+
+final_model$fit
+
+str(final_model)
+
+
+red_index<-subset(names(tile_to_predict), grepl("1$", names(tile_to_predict)))
+nir_index<-subset(names(tile_to_predict), grepl("4$", names(tile_to_predict)))
+
+indeces_test<-spectralIndices(tile_to_predict, red=red_index, nir=nir_index, index="MSAVI2")
+
+tile_comb<-stack(tile_to_predict, indeces_test)
+
+names(tile_comb)<-c("band1", "band2", "band3", "band4", "height", "MSAVI2")
+
+tile_comb@extent@xmin
+x_max<-((tile_comb@extent@xmax-tile_comb@extent@xmin)/10)+tile_comb@extent@xmin
+
+crop_raster<-raster(crs = "+proj=utm +zone=12 +datum=NAD83 +units=m +no_defs +ellps=GRS80 +towgs84=0,0,0",
+       xmn=tile_comb@extent@xmin, 
+       xmx=x_max, 
+       ymn=tile_comb@extent@ymin, 
+       ymx=tile_comb@extent@ymax)
+
+trile_crop<-tile_comb%>%
+  crop(extent(crop_raster))
+
+test_fit<-predict(object = tile_df, model = last_model, progress="text")
+
+tile_crop_height<-trile_crop%>%
+  trim()
+
+tile_df<-tile_crop_height%>%
+  as.data.frame()%>%
+  as_tibble()%>%
+  filter(!is.na(height))
+
+tile_df%>%
+  filter(is.na(height))
+
+
+
+tile_comb
+```
+
+
