@@ -405,10 +405,13 @@ new_rast<-stack(tile, class_rast)%>%
   raster::extract(crop_training_poly["Class"], df=T)%>%
   as_tibble()
 
-new_rast%>%
+final_data_set<-new_rast%>%
   select(-ID)%>%
-  rename(band1=1, band2=2, band3=3, band4=4, Class=5, Id=6)%>%
-  saveRDS("")
+  rename(band1=1, band2=2, band3=3, band4=4, Class=5, Id=6)
+
+final_data_set%>%
+  saveRDS("output/training_data_for_tests/training_data_no_height_or_MSAVI_SM_BasinSE_0301_180611.rds")
+
 Sys.time()-start_time
 
 start_time<-Sys.time()
@@ -422,5 +425,28 @@ Sys.time()-start_time
 
 ```
 
+
+
+## Check Training Datasets
+```{r}
+library(sf)
+library(tidyverse)
+training_polygons<-st_read("shapefiles/training_polygons12N_03182021_refine_classes_add_nates_data.shp")
+
+trfo_veg<-st_read("shapefiles/TRFO_VEG.gdb", "VegPolygons")%>%
+  st_transform(st_crs(training_polygons))
+
+primary_veg<-trfo_veg%>%
+  select(PrimaryVeg)
+
+joined<-training_polygons%>%
+  st_join(primary_veg)
+
+joined%>%
+  as_tibble()%>%
+  select(-geometry)%>%
+  count(Class)
+  filter(str_detect(Class, "Other_Veg"))
+```
 
 

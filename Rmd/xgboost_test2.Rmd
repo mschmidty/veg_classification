@@ -1,0 +1,361 @@
+---
+title: "tidymodel Tests"
+author: "Michael Schmidt"
+date: "3/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+set.seed(1234)
+```
+
+```{r}
+data<-readRDS("output/training_data_for_tests/training_data_no_height_or_MSAVI_SM_BasinSE_0301_180611.rds")
+```
+
+
+## Prep the data
+```{r}
+split<-initial_split(data, strata=Class)
+train<-training(split)
+test<-testing(split)
+```
+
+## Build the model
+
+```{r}
+xgb_spec<-boost_tree(
+  trees=50,
+  tree_depth = tune(),
+  min_n=tune(),
+  loss_reduction=tune(),
+  sample_size=tune(),
+  mtry=tune(),
+  learn_rate=tune()
+)%>%
+  set_engine("xgboost")%>%
+  set_mode("classification")
+```
+## Create Grid to tune
+```{r}
+xgb_grid<-grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size=sample_prop(),
+  finalize(mtry(), select(train, -Id, -Class)),
+  learn_rate(),
+  size=10
+)
+```
+## Make a workflow
+```{r}
+xgb_wf<-workflow()%>%
+  add_formula(as.factor(Class)~band1+band2+band3+band4)%>%
+  add_model(xgb_spec)
+```
+
+## vb_folds
+```{r}
+vb_folds<-vfold_cv(train, strata=Id, v=5)
+```
+## TRain the model
+```{r}
+library(doParallel)
+
+cl<-makeCluster(6, type = "SOCK")
+registerDoParallel(cl)
+
+xgb_res<-tune_grid(
+  xgb_wf,
+  resamples=vb_folds,
+  grid=xgb_grid,
+  control=control_grid(save_pred=T)
+)
+
+stopCluster(cl)
+```
+
+
+## Explore Reseults
+```{r}
+collect_metrics(xgb_res)
+
+xgb_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  select(mean, mtry:sample_size) %>%
+  pivot_longer(mtry:sample_size,
+               values_to = "value",
+               names_to = "parameter"
+  ) %>%
+  ggplot(aes(value, mean, color = parameter)) +
+  geom_point(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(~parameter, scales = "free_x") +
+  labs(x = NULL, y = "AUC")
+```
+
+## select Best
+```{r}
+show_best(xgb_res)
+
+best_auc<-select_best(xgb_res, "roc_auc")
+```
+
+```{r}
+final_xgb<-finalize_workflow(
+  xgb_wf,
+  best_auc
+)
+```
+
+```{r}
+library(vip)
+final_xgb %>%
+  fit(data = train) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
+```
+## Final Fit
+It's super weird but this needs to have the same number of cores running for this step that it had when training the model. 
+```{r}
+final_res<-last_fit(final_xgb, split=split)
+
+final_res%>%
+  saveRDS("output/xgboost_test_model.rds")
+
+final_res %>%
+  collect_predictions() %>%
+  mutate(Class=`as.factor(Class)`, .pred_class=as.factor(.pred_class))%>%
+  roc_curve(Class, .pred_1:.pred_7) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_line(size = 1.5, color = "midnightblue") +
+  geom_abline(
+    lty = 2, alpha = 0.5,
+    color = "gray50",
+    size = 1.2
+  )
+
+predict(final_res$.workflow[[1]], filter(data, Class!=5)[144, ])
+
+final_res%>%
+  collect_predictions()%>%
+  conf_mat(`as.factor(Class)`, .pred_class)
+
+
+
+another_last_fit<-fit(final_xgb, data)
+```
+
+## Predict a raster
+```{r}
+library(raster)
+r<-stack("DATA/SanMiguel_West/Tiffs/SM_BasinSE_0301_180611.tif")
+
+extent(r)
+
+new_extent <- extent(c(714700, 715348.2, 4211500, 4212100))
+
+new_raster<-r%>%
+  crop(new_extent)
+
+names(new_raster)<-c("band1", "band2", "band3", "band4")
+
+predicted<-predict(pull_workflow_fit(another_last_fit), new_raster[1:(nrow(new_raster)*ncol(new_raster))])
+res<- raster(new_raster)
+res<-setValues(res,pull(predicted, .pred_class))
+plot(res)
+
+pull_workflow_fit(another_last_fit)
+
+writeRaster(res, "output/xgboost_test.tif")
+```
+
+
+## Testing a better model
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(RStoolbox)
+library(raster)
+r<-brick("DATA/SanMiguel_West/Tiffs/SM_BasinSE_0301_180611.tif")
+
+extent(r)
+
+new_extent <- extent(c(714700, 715348.2, 4211500, 4212100))
+
+new_raster<-r%>%
+  crop(new_extent)
+
+
+
+red_index<-subset(names(new_raster), grepl("1$", names(new_raster)))
+nir_index<-subset(names(new_raster), grepl("4$", names(new_raster)))
+
+raster<-new_raster%>%
+      stack(
+        RStoolbox::spectralIndices(new_raster, red=red_index, nir=nir_index, index="MSAVI2")
+      )
+
+height_raster<-raster("DATA/NOC_heights/WestSM_dzgridded/SM_BASINSE_0301_180611_dz.tif")%>%
+  crop(extent(raster))%>%
+  disaggregate(fact=5)%>%
+  crop(extent(raster))
+
+final_raster<-raster%>%
+  crop(height_raster)%>%
+  stack(height_raster)
+
+names(final_raster)<-c("band1", "band2", "band3", "band4", "MSAVI2", "height")
+model<-readRDS("model_runs/xgboost_tidy/final_model_for_real.rds")
+
+
+
+```
+
+
+
+## Above didn't work
+```{r}
+lapply(list.files("R", full.names=T), source)
+library(raster)
+library(tidymodels)
+library(tidyverse)
+
+height_raster<-raster("DATA/NOC_heights/WestSM_dzgridded/SM_BASINSE_0301_180611_dz.tif")
+tile<-height_merge2("DATA/SanMiguel_West/Tiffs/SM_BasinSE_0301_180611.tif", height_raster)
+
+new_extent <- extent(c(714700, 715348.2, 4211500, 4212100))
+new_extent <- extent(c(714700, 714750, 4211500, 4211550))
+
+tile_crop<-tile%>%
+  crop(new_extent)
+
+names(tile_crop)<-c("band1", "band2", "band3", "band4", "MSAVI2", "height")
+
+model<-readRDS("model_runs/xgboost_tidy/final_model_for_real.rds")
+
+fun<-function(...){
+  p<-predict(...)
+  return(as.matrix(as.numeric(p[, 1, drop=T])))
+}
+
+predicted<-raster::predict(tile_crop, pull_workflow_fit(model),  type="class", fun=fun)
+
+plot(predicted)
+
+writeRaster(predicted, "output/test_Xgboost_predicted.tiff")
+
+
+
+just_model<-pull_workflow_fit(model)
+
+str(just_model)
+```
+
+
+
+## reproducible example. 
+
+
+```{r}
+library(raster)
+library(tidymodels)
+library(tidyverse)
+
+## Make dummy raster with class as class to predict.
+band1<-raster(ncol=10, nrow=10)
+values(band1)<-runif(ncell(band1))
+
+band2<-raster(ncol=10, nrow=10)
+values(band2)<-runif(ncell(band2))
+
+band3<-raster(ncol=10, nrow=10)
+values(band3)<-runif(ncell(band3))
+
+class<-raster(ncol=10, nrow=10)
+values(class)<-floor(runif(ncell(class), min=1, max=5))
+
+
+r<-stack(band1, band2, band3, class)
+
+names(r)<-c("band1", "band2", "band3", "class")
+
+## Convert raster to df for training. 
+train<-getValues(r)
+
+## Tune and train model.
+xgb_spec<-boost_tree(
+  trees=50,
+  tree_depth = tune(),
+  min_n=tune(),
+  loss_reduction=tune(),
+  sample_size=tune(),
+  mtry=tune(),
+  learn_rate=tune()
+)%>%
+  set_engine("xgboost")%>%
+  set_mode("classification")
+
+xgb_grid<-grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size=sample_prop(),
+  finalize(mtry(), train),
+  learn_rate(),
+  size=5
+)
+
+xgb_wf<-workflow()%>%
+  add_formula(as.factor(class)~band1+band2+band3)%>%
+  add_model(xgb_spec)
+
+folds <- vfold_cv(train, v = 5)
+
+xgb_res<-tune_grid(
+  xgb_wf,
+  resamples=folds,
+  grid=xgb_grid,
+  control=control_grid(save_pred=T)
+)
+
+best_auc<-select_best(xgb_res, "roc_auc")
+
+final_xgb<-finalize_workflow(
+  xgb_wf,
+  best_auc
+)
+
+last_fit<-fit(final_xgb, train)
+
+## remove class layer for test to simulate real world example
+test<-r%>%
+  dropLayer(4)
+
+pfunc<-function(...) predict(reshape=T,...)
+
+## This works
+raster::predict(test, last_fit, type="raw")
+## This doesn't
+f<-list(levels(as.factor(r$class)))
+raster::predict(test, last_fit, type="class", factors=levels(as.factor(r$class))[[1]])
+
+raster::predict(test, pull_workflow_fit(last_fit), type="class")
+
+fun<-function(...){
+  p<-predict(...)
+  return(as.matrix(as.numeric(p[, 1, drop=T])))
+}
+
+raster::predict(test, last_fit, type="class", fun=fun)
+prediction$.pred_class%>%
+  as.numeric()%>%
+  as.matrix()
+```
