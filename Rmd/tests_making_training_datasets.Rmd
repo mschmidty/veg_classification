@@ -488,6 +488,7 @@ saveRDS(test, paste0(output_path, "/training_data_tile_", str_extract(list_of_ti
 Parallel training data completion
 ```{r}
 file_path<-"DATA/Tiffs_W_SM"
+file_path<-"DATA/SanMiguel_West/Tiffs"
 
 library(raster)
 library(sf)
@@ -502,7 +503,7 @@ polygons<-st_read("shapefiles/training_polygons12N_03182021_refine_classes_add_n
 library(parallel)
 library(doParallel)
 
-cl<-makeCluster(35)
+cl<-makeCluster(6)
 registerDoParallel(cl)
 
 clusterExport(cl, varlist=c('train_data4', 'list_of_tiles', 'polygons'), envir=environment())
@@ -513,9 +514,9 @@ start_time<-Sys.time()
 parLapply(cl, 
           list_of_tiles, 
           fun=train_data4, 
-          tile_path="DATA/Tiffs_W_SM",
+          tile_path=file_path,
           training_poly = polygons,
-          output_path="DATA/training_data/refined_traindata_03192021"
+          output_path="DATA/training_data/training_polygons12N_03182021_refine_classes_add_nates_data_V2"
           )
 Sys.time()-start_time
 
@@ -529,7 +530,12 @@ train_files<-list.files("DATA/training_data/refined_traindata_03192021", full.na
 all_files<-lapply(train_files, readRDS)
 
 comb_files<-bind_rows(all_files)
-saveRDS(comb_files,"DATA/training_data/refined_traindata_03192021.rds")
+
+comb_files<-list.files("DATA/training_data/training_polygons12N_03182021_refine_classes_add_nates_data_V2", full.names=T)%>%
+  lapply(readRDS)%>%
+  bind_rows()
+
+saveRDS(comb_files,"DATA/training_data/training_polygons12N_03182021_refine_classes_add_nates_data_V2.rds")
 ```
 
 

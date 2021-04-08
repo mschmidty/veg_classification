@@ -17,8 +17,10 @@ library(tidyverse)
 
 ## Load the data
 ```{r}
-data<-readRDS("DATA/training_data/training_polygons12N_09152020_ADD_SHADOW.rds")%>%
+data<-readRDS("DATA/training_data/training_polygons12N_03182021_refine_classes_add_nates_data_V2.rds")%>%
   drop_na()%>%
+  mutate(class=as.factor(Class))%>%
+  select(-Class)
   mutate(class = case_when(
     Class %in% c(7,2) ~ 7, #Sage and Black Sage 
     Class %in% c(4,5) ~ 5, #Other_veg and other_shrub,
@@ -66,7 +68,7 @@ xgb_grid <- grid_latin_hypercube(
 ## Make workflow
 ```{r}
 xgb_wf<-workflow()%>%
-  add_formula(class~band1+band2+band3+band4+MSAVI2+height)%>%
+  add_formula(class~band1+band2+band3+band4)%>%
   add_model(xgb_spec)
 ```
 
@@ -79,7 +81,7 @@ folds<-vfold_cv(train, strata=Id)
 ```{r}
 library(doParallel)
 
-no_cores<-detectCores(logical = TRUE)-8
+no_cores<-detectCores(logical = TRUE)-3
 cl<-makeCluster(no_cores, type = "SOCK")
 registerDoParallel(cl)
 
