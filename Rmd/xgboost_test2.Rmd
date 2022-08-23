@@ -83,7 +83,7 @@ stopCluster(cl)
 ```
 
 
-## Explore Reseults
+## Explore Results
 ```{r}
 collect_metrics(xgb_res)
 
